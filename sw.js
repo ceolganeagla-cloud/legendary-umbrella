@@ -1,5 +1,5 @@
 // sw.js — force refresh of cached files
-const CACHE = 'cge-weather-v4'; // bump this any time you deploy
+const CACHE = 'cge-weather-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -10,7 +10,7 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', event => {
-  self.skipWaiting(); // take control ASAP
+  self.skipWaiting();
   event.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
 });
 
@@ -20,14 +20,12 @@ self.addEventListener('activate', event => {
       Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
     )
   );
-  self.clients.claim(); // start controlling open pages
+  self.clients.claim();
 });
 
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (url.origin === location.origin) {
-    event.respondWith(
-      caches.match(event.request).then(r => r || fetch(event.request))
-    );
+    event.respondWith(caches.match(event.request).then(r => r || fetch(event.request)));
   }
 });
