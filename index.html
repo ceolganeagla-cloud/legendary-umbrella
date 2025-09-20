@@ -6,26 +6,25 @@
 <title>Ceol Gan Eagla — Weather</title>
 
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="favicon.ico">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">  
 <meta name="theme-color" content="#0b1220"/>
 
-<!-- Leaflet -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
 <style>
 :root{
-  --bg:#0b1220;--panel:#12141c;--card:#1a1e29;--text:#eaeaea;--muted:#b9b9c2;
-  --accent:#ffffff;
+  --bg:#0b1220;--panel:#12141c;--card:#1a1e29;--text:#eaeaea;--muted:#b9b9c2;--accent:#ffffff;
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.35 system-ui,Segoe UI,Roboto,Arial}
 .app{display:grid;grid-template-columns:1fr 420px;gap:12px;height:100vh;padding:12px}
-#map{width:100%;height:100%;border-radius:16px;overflow:hidden}
+#map{width:100%;height:100%;border-radius:16px;overflow:hidden;position:relative}
 aside{background:var(--panel);border-radius:16px;overflow:auto;padding:12px}
 .brand{display:flex;gap:12px;align-items:center;margin-bottom:10px}
 .logo{width:48px;height:48px;border-radius:12px;overflow:hidden;background:#000;flex:0 0 48px}
-.logo img{width:100%;height:100%;object-fit:contain;background:#fff} /* CONTAINED LOGO */
+.logo img{width:100%;height:100%;object-fit:contain;background:#fff} /* contained logo */
 h1{font-size:18px;margin:0}.sub{color:var(--muted);font-size:12px}
 
 .card{background:var(--card);border-radius:12px;padding:12px;margin-bottom:10px}
@@ -36,10 +35,10 @@ select, input[type=text]{background:#0f131c;color:var(--text);border:1px solid r
 input[type=range]{width:180px}
 
 #hourly{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}
-.hour{min-width:90px;padding:8px;border-radius:10px;background:rgba(255,255,255,.06);text-align:center}
+.hour{min-width:96px;padding:8px;border-radius:10px;background:rgba(255,255,255,.06);text-align:center}
 .hour .ico{width:26px;height:26px;margin:6px auto}
 
-#daily{display:grid;grid-template-columns:repeat(7,minmax(90px,1fr));gap:8px}
+#daily{display:grid;grid-template-columns:repeat(7,minmax(96px,1fr));gap:8px}
 .day{padding:8px;border-radius:10px;background:rgba(255,255,255,.06);text-align:center}
 .day .ico{width:26px;height:26px;margin:6px auto}
 
@@ -63,8 +62,7 @@ input[type=range]{width:180px}
   <aside>
     <div class="brand">
       <div class="logo">
-        <img src="./logo.png" alt="Ceol Gan Eagla Logo"
-             onerror="this.onerror=null;this.src='./icon-192.png'">
+        <img src="icon-192.png" alt="Ceol Gan Eagla Logo">
       </div>
       <div>
         <h1>Ceol Gan Eagla — Weather</h1>
@@ -123,52 +121,44 @@ input[type=range]{width:180px}
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-/* ====== CONFIG ====== */
-const MT = 'MpDV384cXMNO273WsuTG'; // MapTiler key you provided
+/* ===== CONFIG ===== */
+const MAPTILER_KEY = 'MpDV384cXMNO273WsuTG';
 
-/* ====== MAP ====== */
+/* ===== MAP ===== */
 const map = L.map('map', { zoomControl: true }).setView([53.35,-6.26], 7);
-const base = L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MT}`, {
+const base = L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`, {
   attribution: '&copy; OpenStreetMap • &copy; MapTiler'
 }).addTo(map);
 
-/* Radar pane (above tiles) */
+/* Radar pane above tiles */
 map.createPane('radar'); map.getPane('radar').style.zIndex = 450;
 const radar = L.tileLayer('', {pane:'radar', opacity:0.7}).addTo(map);
 
-/* Badge on map */
+/* Nice badge on map (location + temp) */
 const badge = L.control({position:'topleft'});
-badge.onAdd = () => {
-  const div = L.DomUtil.create('div','map-badge');
-  div.id='badge';
-  div.innerHTML = 'Locating…';
-  return div;
-};
+badge.onAdd = () => { const d=L.DomUtil.create('div','map-badge'); d.id='badge'; d.innerHTML='Locating…'; return d; };
 badge.addTo(map);
 
-/* ====== ELEMENTS ====== */
-const Q = (id)=>document.getElementById(id);
+/* ===== ELEMENTS ===== */
+const $ = id => document.getElementById(id);
 const el = {
-  units: Q('units'),
-  badge: Q('badge'),
-  frame: Q('frame'),
-  play: Q('play'),
-  frametime: Q('frametime'),
-  opacity: Q('opacity'),
-  updated: Q('updated'),
-  temp: Q('temp'), wind: Q('wind'), precip: Q('precip'), cloud: Q('cloud'),
-  sun: Q('sun'), risk: Q('risk'), nowIcon: Q('nowIcon'),
-  hourly: Q('hourly'), daily: Q('daily'),
-  search: Q('search'), suggest: Q('suggest')
+  units: $('units'), badge: $('badge'),
+  frame: $('frame'), play: $('play'), frametime: $('frametime'), opacity: $('opacity'),
+  updated: $('updated'),
+  temp: $('temp'), wind: $('wind'), precip: $('precip'), cloud: $('cloud'),
+  sun: $('sun'), risk: $('risk'), nowIcon: $('nowIcon'),
+  hourly: $('hourly'), daily: $('daily'),
+  search: $('search'), suggest: $('suggest')
 };
 
-/* ====== HELPERS ====== */
-const toF = c => Math.round(c*9/5+32);
-const msToMph = ms => Math.round(ms*2.23694);
-const mmToIn = mm => Math.round(mm/25.4*100)/100;
-const wIcon = code => '☁'; // simple placeholder icon
+/* ===== HELPERS ===== */
+const toF      = c  => Math.round(c*9/5+32);
+const msToMph  = ms => Math.round(ms*2.23694);
+const mmToIn   = mm => Math.round(mm/25.4*100)/100;
+const wIcon    = code => '☁'; // simple placeholder icon
+function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}}
 
-/* ====== RADAR (RainViewer latest + frames) ====== */
+/* ===== RADAR (RainViewer) ===== */
 let RV = { frames: [], index: 0, timer: null };
 
 async function loadRadar() {
@@ -177,15 +167,12 @@ async function loadRadar() {
     const j = await r.json();
     RV.frames = (j.radar?.past || []).concat(j.radar?.nowcast || []);
     el.frame.max = Math.max(RV.frames.length-1, 0);
-    setRadar(RV.frames.length-1); // jump to latest
-  } catch(e) {
-    // ignore
-  }
+    setRadar(RV.frames.length-1);
+  } catch(e) { /* ignore */ }
 }
 function setRadar(i) {
   RV.index = Math.max(0, Math.min(i, RV.frames.length-1));
-  const fr = RV.frames[RV.index];
-  if (!fr) return;
+  const fr = RV.frames[RV.index]; if (!fr) return;
   const url = `https://tilecache.rainviewer.com/v2/radar/${fr.time}/256/{z}/{x}/{y}/2/1_1.png`;
   radar.setUrl(url);
   el.frametime.textContent = new Date(fr.time*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
@@ -200,17 +187,17 @@ el.play.addEventListener('click', () => {
   }, 700);
 });
 el.opacity.addEventListener('input', e => radar.setOpacity(+e.target.value));
-Q('refresh').addEventListener('click', loadRadar);
+$('refresh').addEventListener('click', loadRadar);
 
-/* ====== GEO + SEARCH ====== */
-Q('btnGeo').addEventListener('click', () => {
+/* ===== GEO + SEARCH (with IE Eircode support) ===== */
+$('btnGeo').addEventListener('click', () => {
   navigator.geolocation?.getCurrentPosition(pos=>{
     const {latitude:lat, longitude:lon} = pos.coords;
     map.setView([lat, lon], 10);
     updateWeather(lat, lon, 'My location');
   });
 });
-Q('btnPin').addEventListener('click', () => {
+$('btnPin').addEventListener('click', () => {
   const c = map.getCenter(); L.marker(c).addTo(map);
   updateWeather(c.lat, c.lng, 'Pinned point');
 });
@@ -219,8 +206,7 @@ el.search.addEventListener('keydown', e => { if (e.key==='Enter') doSearch(); })
 el.search.addEventListener('input', debounce(suggest, 200));
 
 async function doSearch() {
-  const q = el.search.value.trim();
-  if (!q) return;
+  const q = el.search.value.trim(); if (!q) return;
   const eir = /^[A-Z0-9]{3}\s?[A-Z0-9]{4}$/i;
   const url = eir.test(q)
     ? `https://nominatim.openstreetmap.org/search?postalcode=${q.replace(/\s+/g,'')}&countrycodes=ie&format=json&addressdetails=1&limit=5`
@@ -250,9 +236,8 @@ el.suggest.addEventListener('click', e=>{
   map.setView([lat,lon], 10); L.marker([lat,lon]).addTo(map).bindPopup(name).openPopup();
   updateWeather(lat, lon, name);
 });
-function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}}
 
-/* ====== WEATHER (Open-Meteo) ====== */
+/* ===== WEATHER (Open-Meteo) ===== */
 async function updateWeather(lat, lon, label='') {
   el.badge.textContent = label ? `${label} • Lat ${lat.toFixed(3)}, Lon ${lon.toFixed(3)}` : `Lat ${lat.toFixed(3)}, Lon ${lon.toFixed(3)}`;
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
@@ -260,6 +245,7 @@ async function updateWeather(lat, lon, label='') {
     + `&hourly=temperature_2m,precipitation,cloudcover,windspeed_10m,weathercode,snowfall`
     + `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,sunrise,sunset`
     + `&forecast_days=7&timezone=auto`;
+
   const r = await fetch(url, {cache:'no-store'}); const j = await r.json();
 
   const metric = el.units.value === 'metric';
@@ -305,15 +291,18 @@ async function updateWeather(lat, lon, label='') {
       + `${metric? (j.daily.precipitation_sum?.[i]??0)+' mm' : mmToIn(j.daily.precipitation_sum?.[i]??0)+' in'}`;
     el.daily.appendChild(d);
   }
+
+  // Put temp in map badge too
+  el.badge.textContent = `${label || 'Here'} (${lat.toFixed(3)}, ${lon.toFixed(3)}) — ${el.temp.textContent}`;
 }
 
-/* units change -> recompute display at current center */
+/* Units change -> recompute */
 el.units.addEventListener('change', ()=>{
   const c = map.getCenter();
   updateWeather(c.lat, c.lng, 'Updated units');
 });
 
-/* ====== START ====== */
+/* ===== START ===== */
 loadRadar();
 setInterval(loadRadar, 5*60*1000); // refresh radar every 5 min
 navigator.geolocation?.getCurrentPosition(
