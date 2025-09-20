@@ -1,16 +1,138 @@
-<!doctype html><html><head><meta charset='utf-8'><title>Ceol Gan Eagla — Weather</title>
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="favicon.ico">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
-<meta name="theme-color" content="#0b1220">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ceol Gan Eagla — Weather</title>
 
-</head><body>Weather app content missing.
-<script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(console.warn);
-  });
-}
-</script>
+  <!-- Manifest & Icons -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="favicon.ico" />
 
-</body></html>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #eee;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      padding: 10px;
+      background: #000;
+    }
+    header img {
+      height: 40px;
+      margin-right: 10px;
+      border-radius: 8px;
+    }
+    header h1 {
+      font-size: 18px;
+      margin: 0;
+    }
+    #map {
+      height: 60vh;
+      width: 100%;
+    }
+    #controls {
+      padding: 10px;
+      background: #222;
+    }
+    .info {
+      margin-top: 10px;
+      padding: 10px;
+      background: #333;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="icon-192.png" alt="Ceol Gan Eagla Logo">
+    <h1>Ceol Gan Eagla — Weather</h1>
+  </header>
+
+  <div id="map"></div>
+
+  <div id="controls">
+    <button onclick="locateMe()">📍 Me</button>
+    <button onclick="toggleClouds()">☁️ Clouds</button>
+    <button onclick="toggleRadar()">🌧 Radar</button>
+    <select id="unitSelect" onchange="updateWeather()">
+      <option value="metric">Metric (°C)</option>
+      <option value="imperial">Imperial (°F)</option>
+    </select>
+  </div>
+
+  <div id="weather" class="info">Loading weather...</div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    let map = L.map('map').setView([53.3498, -6.2603], 7); // default Dublin
+
+    L.tileLayer('https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=MpDV384cXMNO273WsuTG', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors &copy; <a href="https://www.maptiler.com/">MapTiler</a>'
+    }).addTo(map);
+
+    let weatherLayer, radarLayer;
+
+    async function updateWeather(lat = 53.3498, lon = -6.2603) {
+      let units = document.getElementById('unitSelect').value;
+      let url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=temperature_2m,precipitation,cloudcover,windspeed_10m&timezone=auto`;
+      let res = await fetch(url);
+      let data = await res.json();
+
+      let temp = data.current_weather.temperature;
+      let wind = data.current_weather.windspeed;
+      let code = data.current_weather.weathercode;
+
+      document.getElementById('weather').innerHTML = `
+        <b>Now:</b> ${temp}° (${units}) <br>
+        🌬 Wind: ${wind} m/s <br>
+        ☁️ Code: ${code}
+      `;
+    }
+
+    function locateMe() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+          let lat = pos.coords.latitude;
+          let lon = pos.coords.longitude;
+          map.setView([lat, lon], 8);
+          updateWeather(lat, lon);
+        });
+      }
+    }
+
+    function toggleClouds() {
+      if (weatherLayer) {
+        map.removeLayer(weatherLayer);
+        weatherLayer = null;
+      } else {
+        weatherLayer = L.tileLayer(`https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=439d4b804bc8187953eb36d2a8c26a02`, {
+          attribution: 'Clouds © OpenWeatherMap'
+        }).addTo(map);
+      }
+    }
+
+    function toggleRadar() {
+      if (radarLayer) {
+        map.removeLayer(radarLayer);
+        radarLayer = null;
+      } else {
+        radarLayer = L.tileLayer(`https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=439d4b804bc8187953eb36d2a8c26a02`, {
+          attribution: 'Radar © OpenWeatherMap'
+        }).addTo(map);
+      }
+    }
+
+    updateWeather();
+  </script>
+</body>
+</html>
