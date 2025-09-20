@@ -5,12 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Ceol Gan Eagla — Weather</title>
 
+<!-- PWA + icons -->
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="theme-color" content="#0b1220"/>
 
+<!-- Leaflet -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
 <style>
@@ -36,11 +38,11 @@ input[type=range]{width:180px}
 
 #hourly{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}
 .hour{min-width:96px;padding:8px;border-radius:10px;background:rgba(255,255,255,.06);text-align:center}
-.hour .ico{width:26px;height:26px;margin:6px auto}
+.hour .ico{font-size:22px;margin:4px 0}
 
 #daily{display:grid;grid-template-columns:repeat(7,minmax(96px,1fr));gap:8px}
 .day{padding:8px;border-radius:10px;background:rgba(255,255,255,.06);text-align:center}
-.day .ico{width:26px;height:26px;margin:6px auto}
+.day .ico{font-size:22px;margin:4px 0}
 
 #searchWrap{position:relative}
 #suggest{position:absolute;left:0;right:0;top:44px;background:#0f131c;border:1px solid rgba(255,255,255,.15);border-radius:10px;overflow:hidden;display:none;max-height:240px;overflow:auto;z-index:20}
@@ -51,6 +53,8 @@ input[type=range]{width:180px}
 
 .map-badge{position:absolute;left:10px;top:10px;background:rgba(18,18,22,.88);color:#fff;
   border:1px solid rgba(255,255,255,.2);padding:6px 8px;border-radius:8px;font-size:12px;z-index:450}
+
+.leaflet-popup { margin-top: 30px !important; } /* keep zoom controls clear */
 
 @media (max-width:860px){.app{grid-template-columns:1fr;grid-template-rows:50vh 1fr}}
 </style>
@@ -66,7 +70,7 @@ input[type=range]{width:180px}
       </div>
       <div>
         <h1>Ceol Gan Eagla — Weather</h1>
-        <div class="sub">Sources: OSM • MapTiler • RainViewer • Open-Meteo • Nominatim</div>
+        <div class="sub">Sources: OSM • MapTiler • RainViewer • Open-Meteo • Nominatim • Tomorrow.io (optional)</div>
       </div>
     </div>
 
@@ -76,10 +80,20 @@ input[type=range]{width:180px}
       <div class="row" style="margin-top:8px">
         <button id="btnGeo" class="btn">📍 Me</button>
         <button id="btnPin"  class="btn ghost">📌 Pin</button>
+
         <label>Units
           <select id="units" class="btn ghost">
             <option value="metric" selected>Metric (°C)</option>
             <option value="imperial">Imperial (°F)</option>
+          </select>
+        </label>
+
+        <!-- NEW: Data source selector -->
+        <label>Source
+          <select id="source" class="btn ghost" title="Open-Meteo is free. Tomorrow.io/Speedome need keys/URL.">
+            <option value="open-meteo" selected>Open-Meteo (free)</option>
+            <option value="tomorrow">T.io (Tomorrow.io)</option>
+            <option value="speedome">Speedome (custom)</option>
           </select>
         </label>
       </div>
@@ -119,195 +133,299 @@ input[type=range]{width:180px}
   </aside>
 </div>
 
+<!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-/* ===== CONFIG ===== */
-const MAPTILER_KEY = 'MpDV384cXMNO273WsuTG';
+/* ===== YOUR KEYS / ENDPOINTS (edit these) ===== */
+const MAPTILER_KEY = 'MpDV384cXMNO273WsuTG'; // OK
+const TOMORROW_API_KEY = ''; // <- put your Tomorrow.io API key here (or leave blank to keep disabled)
+const SPEEDOME_ENDPOINT = ''; // <- put your custom JSON endpoint here, e.g. 'https://your.api/wind?lat={lat}&lon={lon}'
+/*
+  ⚠️ Legal note:
+  - Do not scrape websites that forbid it. Use their public APIs & follow ToS.
+  - Tomorrow.io requires a key; free/dev tiers exist but have limits.
+  - Speedome is a placeholder: point it to your own backend / allowed API.
+*/
+
+/* ===== ICONS (emoji) ===== */
+function wIcon(code) {
+  const map = {
+    0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️",
+    45: "🌫️", 48: "🌫️",
+    51: "🌦️", 61: "🌧️", 63: "🌧️", 65: "🌧️",
+    66: "🌧️", 67: "🌧️",
+    71: "❄️", 73: "❄️", 75: "❄️", 77: "❄️",
+    80: "🌧️", 81: "🌧️", 82: "🌧️",
+    95: "⛈️", 96: "⛈️", 99: "⛈️"
+  };
+  return `<div class="ico">${map[code] || "❔"}</div>`;
+}
 
 /* ===== MAP ===== */
 const map = L.map('map', { zoomControl: true }).setView([53.35,-6.26], 7);
-const base = L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`, {
+L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`, {
   attribution: '&copy; OpenStreetMap • &copy; MapTiler'
 }).addTo(map);
 
-/* Radar pane above tiles */
+/* Radar (RainViewer) */
 map.createPane('radar'); map.getPane('radar').style.zIndex = 450;
 const radar = L.tileLayer('', {pane:'radar', opacity:0.7}).addTo(map);
 
-/* Nice badge on map (location + temp) */
-const badge = L.control({position:'topleft'});
-badge.onAdd = () => { const d=L.DomUtil.create('div','map-badge'); d.id='badge'; d.innerHTML='Locating…'; return d; };
-badge.addTo(map);
-
-/* ===== ELEMENTS ===== */
+/* DOM refs */
 const $ = id => document.getElementById(id);
 const el = {
-  units: $('units'), badge: $('badge'),
+  units: $('units'), source: $('source'),
   frame: $('frame'), play: $('play'), frametime: $('frametime'), opacity: $('opacity'),
-  updated: $('updated'),
-  temp: $('temp'), wind: $('wind'), precip: $('precip'), cloud: $('cloud'),
+  updated: $('updated'), temp: $('temp'), wind: $('wind'), precip: $('precip'), cloud: $('cloud'),
   sun: $('sun'), risk: $('risk'), nowIcon: $('nowIcon'),
-  hourly: $('hourly'), daily: $('daily'),
-  search: $('search'), suggest: $('suggest')
+  hourly: $('hourly'), daily: $('daily'), search: $('search'), suggest: $('suggest')
 };
 
-/* ===== HELPERS ===== */
-const toF      = c  => Math.round(c*9/5+32);
-const msToMph  = ms => Math.round(ms*2.23694);
-const mmToIn   = mm => Math.round(mm/25.4*100)/100;
-const wIcon    = code => '☁'; // simple placeholder icon
-function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}}
+/* helpers */
+const toF = c => Math.round(c*9/5+32);
+const msToMph = ms => Math.round(ms*2.23694);
+const mmToIn = mm => Math.round(mm/25.4*100)/100;
 
-/* ===== RADAR (RainViewer) ===== */
+/* ===== Radar frames ===== */
 let RV = { frames: [], index: 0, timer: null };
-
 async function loadRadar() {
-  try {
-    const r = await fetch('https://api.rainviewer.com/public/weather-maps.json', {cache:'no-store'});
+  try{
+    const r = await fetch('https://api.rainviewer.com/public/weather-maps.json',{cache:'no-store'});
     const j = await r.json();
-    RV.frames = (j.radar?.past || []).concat(j.radar?.nowcast || []);
-    el.frame.max = Math.max(RV.frames.length-1, 0);
+    RV.frames = (j.radar?.past||[]).concat(j.radar?.nowcast||[]);
+    el.frame.max = Math.max(RV.frames.length-1,0);
     setRadar(RV.frames.length-1);
-  } catch(e) { /* ignore */ }
+  }catch(e){/* ignore */}
 }
 function setRadar(i) {
-  RV.index = Math.max(0, Math.min(i, RV.frames.length-1));
-  const fr = RV.frames[RV.index]; if (!fr) return;
-  const url = `https://tilecache.rainviewer.com/v2/radar/${fr.time}/256/{z}/{x}/{y}/2/1_1.png`;
-  radar.setUrl(url);
-  el.frametime.textContent = new Date(fr.time*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  RV.index=Math.max(0,Math.min(i,RV.frames.length-1));
+  const fr=RV.frames[RV.index]; if(!fr) return;
+  radar.setUrl(`https://tilecache.rainviewer.com/v2/radar/${fr.time}/256/{z}/{x}/{y}/2/1_1.png`);
+  el.frametime.textContent=new Date(fr.time*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 }
-el.frame.addEventListener('input', e => setRadar(+e.target.value));
-el.play.addEventListener('click', () => {
-  if (RV.timer) { clearInterval(RV.timer); RV.timer=null; el.play.textContent='▶︎'; return; }
+el.frame.oninput=e=>setRadar(+e.target.value);
+el.play.onclick=()=>{
+  if(RV.timer){clearInterval(RV.timer);RV.timer=null;el.play.textContent='▶︎';return;}
   el.play.textContent='⏸';
-  RV.timer = setInterval(()=>{
-    const next = (RV.index+1) % RV.frames.length;
-    el.frame.value = next; setRadar(next);
-  }, 700);
-});
-el.opacity.addEventListener('input', e => radar.setOpacity(+e.target.value));
-$('refresh').addEventListener('click', loadRadar);
+  RV.timer=setInterval(()=>{const n=(RV.index+1)%RV.frames.length;el.frame.value=n;setRadar(n);},700);
+};
+el.opacity.oninput=e=>radar.setOpacity(+e.target.value);
+$('refresh').onclick=loadRadar;
 
-/* ===== GEO + SEARCH (with IE Eircode support) ===== */
-$('btnGeo').addEventListener('click', () => {
-  navigator.geolocation?.getCurrentPosition(pos=>{
-    const {latitude:lat, longitude:lon} = pos.coords;
-    map.setView([lat, lon], 10);
-    updateWeather(lat, lon, 'My location');
-  });
+/* ===== Search & Geolocation ===== */
+$('btnGeo').onclick=()=>navigator.geolocation?.getCurrentPosition(pos=>{
+  const {latitude:lat, longitude:lon}=pos.coords; map.setView([lat,lon],10); updateWeather(lat,lon,'My location');
 });
-$('btnPin').addEventListener('click', () => {
-  const c = map.getCenter(); L.marker(c).addTo(map);
-  updateWeather(c.lat, c.lng, 'Pinned point');
-});
+$('btnPin').onclick=()=>{const c=map.getCenter();L.marker(c).addTo(map);updateWeather(c.lat,c.lng,'Pinned point');};
 
-el.search.addEventListener('keydown', e => { if (e.key==='Enter') doSearch(); });
-el.search.addEventListener('input', debounce(suggest, 200));
+el.search.addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
+el.search.addEventListener('input', debounce(suggest,200));
 
-async function doSearch() {
-  const q = el.search.value.trim(); if (!q) return;
-  const eir = /^[A-Z0-9]{3}\s?[A-Z0-9]{4}$/i;
+async function doSearch(){
+  const q=el.search.value.trim(); if(!q) return;
+  const eir=/^[A-Z0-9]{3}\s?[A-Z0-9]{4}$/i;
   const url = eir.test(q)
     ? `https://nominatim.openstreetmap.org/search?postalcode=${q.replace(/\s+/g,'')}&countrycodes=ie&format=json&addressdetails=1&limit=5`
     : `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`;
-  const r = await fetch(url, {headers:{'Accept-Language':navigator.language||'en'}});
-  const j = await r.json();
-  el.suggest.innerHTML = ''; el.suggest.style.display = 'none';
-  if (!j.length) return;
-  const {lat, lon, display_name} = j[0];
-  map.setView([+lat, +lon], 10);
+  const r=await fetch(url,{headers:{'Accept-Language':navigator.language||'en'}}); const j=await r.json();
+  el.suggest.innerHTML=''; el.suggest.style.display='none';
+  if(!j.length) return;
+  const {lat,lon,display_name}=j[0];
+  map.setView([+lat,+lon],10);
   L.marker([+lat,+lon]).addTo(map).bindPopup(display_name).openPopup();
-  updateWeather(+lat, +lon, display_name);
+  updateWeather(+lat,+lon,display_name);
 }
-async function suggest() {
-  const q = el.search.value.trim();
-  if (!q) { el.suggest.style.display='none'; return; }
-  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`, {headers:{'Accept-Language':'en'}});
-  const j = await r.json();
-  el.suggest.innerHTML = j.map(o=>`<div class="item" data-lat="${o.lat}" data-lon="${o.lon}">${o.display_name}</div>`).join('');
-  el.suggest.style.display = j.length ? 'block' : 'none';
+async function suggest(){
+  const q=el.search.value.trim(); if(!q){el.suggest.style.display='none';return;}
+  const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`,{headers:{'Accept-Language':'en'}});
+  const j=await r.json();
+  el.suggest.innerHTML=j.map(o=>`<div class="item" data-lat="${o.lat}" data-lon="${o.lon}">${o.display_name}</div>`).join('');
+  el.suggest.style.display=j.length?'block':'none';
 }
 el.suggest.addEventListener('click', e=>{
-  const it = e.target.closest('.item'); if (!it) return;
-  const lat = +it.dataset.lat, lon = +it.dataset.lon;
-  const name = it.textContent;
-  el.suggest.style.display = 'none';
-  map.setView([lat,lon], 10); L.marker([lat,lon]).addTo(map).bindPopup(name).openPopup();
-  updateWeather(lat, lon, name);
+  const it=e.target.closest('.item'); if(!it) return;
+  const lat=+it.dataset.lat, lon=+it.dataset.lon, name=it.textContent;
+  el.suggest.style.display='none';
+  map.setView([lat,lon],10); L.marker([lat,lon]).addTo(map).bindPopup(name).openPopup();
+  updateWeather(lat,lon,name);
 });
+function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}}
 
-/* ===== WEATHER (Open-Meteo) ===== */
-async function updateWeather(lat, lon, label='') {
-  el.badge.textContent = label ? `${label} • Lat ${lat.toFixed(3)}, Lon ${lon.toFixed(3)}` : `Lat ${lat.toFixed(3)}, Lon ${lon.toFixed(3)}`;
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
-    + `&current_weather=true`
-    + `&hourly=temperature_2m,precipitation,cloudcover,windspeed_10m,weathercode,snowfall`
-    + `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,sunrise,sunset`
-    + `&forecast_days=7&timezone=auto`;
-
-  const r = await fetch(url, {cache:'no-store'}); const j = await r.json();
-
-  const metric = el.units.value === 'metric';
-  const cNow = j.current_weather;
-  const tC = Math.round(cNow?.temperature ?? 0);
-  const windMs = j.hourly?.windspeed_10m?.[0] ?? 0;
-  const pMm = j.hourly?.precipitation?.[0] ?? 0;
-  const cl  = j.hourly?.cloudcover?.[0] ?? 0;
-  const snow = j.hourly?.snowfall?.[0] ?? 0;
-  const sunrise = j.daily.sunrise?.[0], sunset = j.daily.sunset?.[0];
-
-  el.nowIcon.textContent = wIcon(cNow?.weathercode ?? 0);
-  el.temp.textContent   = metric ? `${tC}°C` : `${toF(tC)}°F`;
-  el.wind.textContent   = metric ? `Wind ${Math.round(windMs)} m/s` : `Wind ${msToMph(windMs)} mph`;
-  el.precip.textContent = metric ? `Precip ${pMm} mm` : `Precip ${mmToIn(pMm)} in`;
-  el.cloud.textContent  = `Cloud ${cl}%`;
-  el.sun.textContent    = `Sunrise ${new Date(sunrise).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} / Sunset ${new Date(sunset).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`;
-  el.risk.textContent   = (snow>0?'❄ snow':'') + ((cl<=0 && pMm>0)?' • 🌧 rain':'') + (snow>0?' • 🧊 ice risk':'');
-  el.updated.textContent= `Updated ${new Date().toLocaleTimeString()}`;
-
-  // 24h
-  el.hourly.innerHTML = '';
-  for (let i=0;i<24;i++){
-    const ti = j.hourly.time[i].slice(11,16);
-    const tc = j.hourly.temperature_2m[i];
-    const pp = j.hourly.precipitation[i];
-    const card = document.createElement('div');
-    card.className='hour';
-    card.innerHTML = `${ti}<div class="ico">${wIcon(j.hourly.weathercode[i])}</div>`
-      + `${metric? Math.round(tc)+'°C' : toF(tc)+'°F'}<br>`
-      + `${metric? pp+' mm' : mmToIn(pp)+' in'}`;
-    el.hourly.appendChild(card);
-  }
-  // 7-day
-  el.daily.innerHTML = '';
-  for (let i=0;i<7;i++){
-    const wd = new Date(j.daily.time[i]).toLocaleDateString(undefined,{weekday:'short'});
-    const tmax = j.daily.temperature_2m_max[i], tmin = j.daily.temperature_2m_min[i];
-    const d = document.createElement('div'); d.className='day';
-    d.innerHTML = `${wd}<div class="ico">${wIcon(0)}</div>`
-      + `${metric? Math.round(tmax)+'°C / '+Math.round(tmin)+'°C'
-               : toF(tmax)+'°F / '+toF(tmin)+'°F'}<br>`
-      + `${metric? (j.daily.precipitation_sum?.[i]??0)+' mm' : mmToIn(j.daily.precipitation_sum?.[i]??0)+' in'}`;
-    el.daily.appendChild(d);
-  }
-
-  // Put temp in map badge too
-  el.badge.textContent = `${label || 'Here'} (${lat.toFixed(3)}, ${lon.toFixed(3)}) — ${el.temp.textContent}`;
+/* ===== Unified fetchers ===== */
+/* Open-Meteo (free) -> returns normalized data */
+async function fetchOpenMeteo(lat,lon){
+  const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+   +`&current_weather=true&hourly=temperature_2m,precipitation,cloudcover,windspeed_10m,weathercode,snowfall`
+   +`&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,sunrise,sunset,weathercode`
+   +`&forecast_days=7&timezone=auto`;
+  const r=await fetch(url,{cache:'no-store'}); const j=await r.json();
+  return {
+    current:{
+      tempC: j.current_weather?.temperature ?? null,
+      code:  j.current_weather?.weathercode ?? 3,
+      windMs: j.hourly?.windspeed_10m?.[0] ?? 0,
+      precipMm: j.hourly?.precipitation?.[0] ?? 0,
+      cloud: j.hourly?.cloudcover?.[0] ?? 0,
+      snowMm: j.hourly?.snowfall?.[0] ?? 0,
+      sunrise: j.daily?.sunrise?.[0] ?? null,
+      sunset:  j.daily?.sunset?.[0] ?? null
+    },
+    hourly: {
+      time: j.hourly?.time ?? [],
+      tempC: j.hourly?.temperature_2m ?? [],
+      precipMm: j.hourly?.precipitation ?? [],
+      code: j.hourly?.weathercode ?? []
+    },
+    daily: {
+      time: j.daily?.time ?? [],
+      tmaxC: j.daily?.temperature_2m_max ?? [],
+      tminC: j.daily?.temperature_2m_min ?? [],
+      precipMm: j.daily?.precipitation_sum ?? [],
+      code: j.daily?.weathercode ?? []
+    }
+  };
 }
 
-/* Units change -> recompute */
-el.units.addEventListener('change', ()=>{
-  const c = map.getCenter();
-  updateWeather(c.lat, c.lng, 'Updated units');
-});
+/* Tomorrow.io (T.io) — requires key; free/dev tier exists; read ToS */
+async function fetchTomorrow(lat,lon){
+  if(!TOMORROW_API_KEY) throw new Error('Tomorrow.io key missing');
+  // v4 "timelines" endpoint (basic example)
+  const fields = [
+    'temperature', 'precipitationIntensity', 'cloudCover', 'windSpeed',
+    'weatherCode', 'snowIntensity', 'sunriseTime', 'sunsetTime'
+  ].join(',');
+  const url = `https://api.tomorrow.io/v4/timelines?location=${lat},${lon}`
+    + `&fields=${fields}&timesteps=hourly,daily,current&units=metric&apikey=${TOMORROW_API_KEY}`;
+  const r = await fetch(url,{cache:'no-store'});
+  const j = await r.json();
+  // naive extraction to our normalized shape
+  const current = j?.data?.timelines?.find(t=>t.timestep==='current')?.intervals?.[0]?.values || {};
+  const hourlyT = j?.data?.timelines?.find(t=>t.timestep==='hourly')?.intervals || [];
+  const dailyT  = j?.data?.timelines?.find(t=>t.timestep==='daily')?.intervals || [];
+  return {
+    current:{
+      tempC: current.temperature ?? null,
+      code: current.weatherCode ?? 3,
+      windMs: (current.windSpeed ?? 0) / 3.6, // kph -> m/s
+      precipMm: current.precipitationIntensity ?? 0,
+      cloud: current.cloudCover ?? 0,
+      snowMm: current.snowIntensity ?? 0,
+      sunrise: dailyT[0]?.values?.sunriseTime ?? null,
+      sunset:  dailyT[0]?.values?.sunsetTime ?? null
+    },
+    hourly:{
+      time: hourlyT.map(i=>i.startTime),
+      tempC: hourlyT.map(i=>i.values.temperature),
+      precipMm: hourlyT.map(i=>i.values.precipitationIntensity ?? 0),
+      code: hourlyT.map(i=>i.values.weatherCode ?? 3)
+    },
+    daily:{
+      time: dailyT.map(i=>i.startTime),
+      tmaxC: dailyT.map(i=>i.values.temperatureMax),
+      tminC: dailyT.map(i=>i.values.temperatureMin),
+      precipMm: dailyT.map(i=>i.values.precipitationIntensity ?? 0),
+      code: dailyT.map(i=>i.values.weatherCode ?? 3)
+    }
+  };
+}
 
-/* ===== START ===== */
-loadRadar();
-setInterval(loadRadar, 5*60*1000); // refresh radar every 5 min
+/* Speedome (custom) — you supply endpoint that returns your JSON.
+   Expected normalized shape (example):
+   {
+     current:{ tempC, code, windMs, precipMm, cloud, snowMm, sunrise, sunset },
+     hourly:{ time[], tempC[], precipMm[], code[] },
+     daily:{ time[], tmaxC[], tminC[], precipMm[], code[] }
+   }
+*/
+async function fetchSpeedome(lat,lon){
+  if(!SPEEDOME_ENDPOINT) throw new Error('Speedome endpoint missing');
+  const url = SPEEDOME_ENDPOINT
+    .replace('{lat}', encodeURIComponent(lat))
+    .replace('{lon}', encodeURIComponent(lon));
+  const r = await fetch(url, {cache:'no-store'});
+  if(!r.ok) throw new Error('Speedome fetch failed');
+  return await r.json();
+}
+
+/* ===== Update UI from normalized data ===== */
+function renderWeather(norm, lat, lon, label){
+  const metric = el.units.value==='metric';
+  const c = norm.current;
+  const tC = Math.round(c.tempC ?? 0);
+  const wind = c.windMs ?? 0;
+  const p = c.precipMm ?? 0;
+  const cl = c.cloud ?? 0;
+  const snow = c.snowMm ?? 0;
+
+  el.nowIcon.innerHTML = wIcon(c.code ?? 3);
+  el.temp.textContent  = metric ? `${tC}°C` : `${toF(tC)}°F`;
+  el.wind.textContent  = metric ? `Wind ${Math.round(wind)} m/s` : `Wind ${msToMph(wind)} mph`;
+  el.precip.textContent= metric ? `Precip ${p} mm` : `Precip ${mmToIn(p)} in`;
+  el.cloud.textContent = `Cloud ${cl}%`;
+  el.sun.textContent   = `Sunrise ${c.sunrise?new Date(c.sunrise).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—'} / Sunset ${c.sunset?new Date(c.sunset).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—'}`;
+  el.risk.textContent  = (snow>0?'❄ snow':'') + ((cl<=0 && p>0)?' • 🌧 rain':'') + (snow>0?' • 🧊 ice':'');
+  el.updated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+
+  // hourly
+  el.hourly.innerHTML='';
+  for(let i=0;i<Math.min(24, norm.hourly.time.length); i++){
+    const ti = (norm.hourly.time[i]||'').toString().slice(11,16);
+    const tc = norm.hourly.tempC[i];
+    const pp = norm.hourly.precipMm[i];
+    const code = norm.hourly.code[i];
+    const div = document.createElement('div'); div.className='hour';
+    div.innerHTML = `${ti}${wIcon(code)}`
+      + `${metric? Math.round(tc)+'°C' : toF(tc)+'°F'}<br>`
+      + `${metric? pp+' mm' : mmToIn(pp)+' in'}`;
+    el.hourly.appendChild(div);
+  }
+
+  // daily
+  el.daily.innerHTML='';
+  for(let i=0;i<Math.min(7, norm.daily.time.length); i++){
+    const wd = new Date(norm.daily.time[i]).toLocaleDateString(undefined,{weekday:'short'});
+    const tmax = norm.daily.tmaxC[i], tmin = norm.daily.tminC[i];
+    const pmm = norm.daily.precipMm[i] ?? 0;
+    const code = norm.daily.code[i];
+    const div=document.createElement('div'); div.className='day';
+    div.innerHTML = `${wd}${wIcon(code)}`
+      + `${metric? Math.round(tmax)+'°C / '+Math.round(tmin)+'°C' : toF(tmax)+'°F / '+toF(tmin)+'°F'}<br>`
+      + `${metric? pmm+' mm' : mmToIn(pmm)+' in'}`;
+    el.daily.appendChild(div);
+  }
+
+  // badge
+  let badge=document.querySelector('.map-badge');
+  if(!badge){ badge=document.createElement('div'); badge.className='map-badge'; document.getElementById('map').appendChild(badge); }
+  badge.textContent=`${label || 'Here'} • (${lat.toFixed(3)}, ${lon.toFixed(3)}) • ${el.temp.textContent}`;
+}
+
+/* ===== Router ===== */
+async function updateWeather(lat,lon,label=''){
+  const src = el.source.value;
+  try{
+    let data;
+    if(src==='open-meteo') data = await fetchOpenMeteo(lat,lon);
+    else if(src==='tomorrow') data = await fetchTomorrow(lat,lon);
+    else if(src==='speedome') data = await fetchSpeedome(lat,lon);
+    renderWeather(data, lat, lon, label);
+  }catch(err){
+    console.error(err);
+    // fall back to Open-Meteo if others fail
+    if(src!=='open-meteo'){
+      const data = await fetchOpenMeteo(lat,lon);
+      renderWeather(data, lat, lon, label + ' (fallback)');
+    }
+  }
+}
+el.units.onchange=()=>{const c=map.getCenter();updateWeather(c.lat,c.lng,'Updated units');};
+el.source.onchange=()=>{const c=map.getCenter();updateWeather(c.lat,c.lng,'Changed source');};
+
+/* init */
+loadRadar(); setInterval(loadRadar,5*60*1000);
 navigator.geolocation?.getCurrentPosition(
-  pos => { const {latitude:lat, longitude:lon} = pos.coords; map.setView([lat,lon],10); updateWeather(lat,lon,'My location'); },
-  ()  => { updateWeather(53.35,-6.26,'Dublin area'); }
+  pos=>{map.setView([pos.coords.latitude,pos.coords.longitude],10);updateWeather(pos.coords.latitude,pos.coords.longitude,'My location');},
+  ()=>updateWeather(53.35,-6.26,'Dublin area')
 );
 </script>
 </body>
