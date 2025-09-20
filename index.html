@@ -5,36 +5,95 @@
 <div id="gps-bar">
   <span id="gps-location">📍 Locating…</span> |
   <span id="gps-speed">⏱️ Speed: 0 km/h</span> |
-  <button onclick="toggleUnits()">Toggle Units</button>
+  <button id="unit-btn" onclick="toggleUnits()">Toggle Units (km/h)</button>
 </div>
 
+<!-- Leaflet CSS -->
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
 <style>
-  #map {
-    height: 60vh;
-    width: 100%;
-  }
+  html, body { margin:0; height:100%; }
+  #map { height: calc(100vh - 42px); width: 100%; } /* leave room for bottom bar */
   #gps-bar {
-    background: rgba(0,0,0,0.7);
-    color: #fff;
-    font-size: 14px;
-    padding: 8px;
-    text-align: center;
-    position: relative;
-    bottom: 0;
-    width: 100%;
-    border-top: 1px solid #333;
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.8); color: #fff;
+    font-size: 14px; padding: 8px; text-align: center;
+    border-top: 1px solid #333; z-index: 9999;
   }
   #gps-bar button {
-    background: #444;
-    border: none;
-    color: #fff;
-    padding: 4px 8px;
-    margin-left: 6px;
-    cursor: pointer;
-    border-radius: 4px;
+    background: #444; border: none; color: #fff;
+    padding: 4px 8px; margin-left: 6px; cursor: pointer; border-radius: 4px;
   }
+  /* Nudge zoom controls so they don't collide with any map badges you might add */
+  .leaflet-top .leaflet-control-zoom { margin-top: 10px; }
 </style>
 
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+  // --- MAP INIT (Leaflet + MapTiler) ---
+  const MAPTILER_KEY = "MpDV384cXMNO273WsuTG"; // your key
+  const map = L.map('map').setView([53.35, -6.26], 8);
+  L.tileLayer(
+    `https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`,
+    { attribution: '&copy; OpenStreetMap • &copy; MapTiler' }
+  ).addTo(map);
+
+  // --- GPS & SPEED ---
+  let speedUnit = "kmh";            // "kmh" | "mph" | "knots"
+  let lastSpeedMs = 0;              // store last m/s so toggling units can update immediately
+  const locEl = document.getElementById("gps-location");
+  const spdEl = document.getElementById("gps-speed");
+  const unitBtn = document.getElementById("unit-btn");
+
+  function convertSpeed(ms) {
+    if (ms == null || isNaN(ms)) ms = 0;
+    if (speedUnit === "kmh")   return (ms * 3.6).toFixed(1) + " km/h";
+    if (speedUnit === "mph")   return (ms * 2.23694).toFixed(1) + " mph";
+    /* knots */                return (ms * 1.94384).toFixed(1) + " knots";
+  }
+
+  function updateSpeedDisplay() {
+    spdEl.textContent = "⏱️ Speed: " + convertSpeed(lastSpeedMs);
+    unitBtn.textContent = "Toggle Units (" + (speedUnit === "kmh" ? "km/h" : speedUnit) + ")";
+  }
+
+  function toggleUnits() {
+    speedUnit = speedUnit === "kmh" ? "mph" : speedUnit === "mph" ? "knots" : "kmh";
+    updateSpeedDisplay();
+  }
+
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(
+      pos => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        lastSpeedMs = (pos.coords.speed == null) ? 0 : pos.coords.speed; // m/s
+
+        // Update UI
+        locEl.textContent = `📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+        updateSpeedDisplay();
+
+        // Optionally center map the first time we get a fix (comment out to avoid constant jumps)
+        if (!map._gotFix) {
+          map.setView([lat, lon], 13);
+          map._gotFix = true;
+          L.marker([lat, lon]).addTo(map).bindPopup("You are here").openPopup();
+        }
+      },
+      err => {
+        locEl.textContent = "📍 Location unavailable";
+        console.error(err);
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+    );
+  } else {
+    locEl.textContent = "📍 Geolocation not supported";
+  }
+</script>
 <script>
   let speedUnit = "kmh"; // default
 
