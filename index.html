@@ -1,40 +1,200 @@
-<!-- Map container -->
-<div id="map"></div>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Ceol Gan Eagla — GPS Map + Speed</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<!-- Bottom bar for GPS info -->
-<div id="gps-bar">
-  <span id="gps-location">📍 Locating…</span> |
-  <span id="gps-speed">⏱️ Speed: 0 km/h</span> |
-  <button id="unit-btn" onclick="toggleUnits()">Toggle Units (km/h)</button>
-</div>
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
 
-<!-- Leaflet CSS -->
-<link
-  rel="stylesheet"
-  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-/>
-<style>
-  html, body { margin:0; height:100%; }
-  #map { height: calc(100vh - 42px); width: 100%; } /* leave room for bottom bar */
-  #gps-bar {
-    position: fixed; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.8); color: #fff;
-    font-size: 14px; padding: 8px; text-align: center;
-    border-top: 1px solid #333; z-index: 9999;
-  }
-  #gps-bar button {
-    background: #444; border: none; color: #fff;
-    padding: 4px 8px; margin-left: 6px; cursor: pointer; border-radius: 4px;
-  }
-  /* Nudge zoom controls so they don't collide with any map badges you might add */
-  .leaflet-top .leaflet-control-zoom { margin-top: 10px; }
-</style>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #0b1220;
+      color: #fff;
+      font: 14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    /* Map fills all height minus the bottom bar */
+    #map {
+      height: calc(100vh - 46px);
+      width: 100%;
+    }
+    /* Bottom bar fixed to viewport */
+    #gps-bar {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.85);
+      color: #fff;
+      font-size: 14px;
+      padding: 8px 10px;
+      text-align: center;
+      border-top: 1px solid #333;
+      z-index: 10000;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #gps-bar button {
+      background: #ffffff;
+      color: #111;
+      border: 0;
+      padding: 5px 10px;
+      margin-left: 8px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #gps-bar .sep {
+      opacity: .5; padding: 0 6px;
+    }
 
-<!-- Leaflet JS -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    /* Move zoom to bottom-right so it never overlaps custom overlays */
+    .leaflet-bottom.leaflet-right .leaflet-control-zoom {
+      margin: 10px;
+    }
 
-<script>
-  // --- MAP INIT (Leaflet + MapTiler) ---
+    /* Optional: a small “badge” on the map top-left that shows the last fix */
+    .map-badge {
+      position: absolute;
+      left: 10px; top: 10px;
+      background: rgba(18,18,22,.9);
+      border: 1px solid rgba(255,255,255,.2);
+      color: #fff;
+      font-size: 12px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      z-index: 500;
+      pointer-events: none; /* never blocks clicks */
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Map container -->
+  <div id="map">
+    <div id="badge" class="map-badge">Locating…</div>
+  </div>
+
+  <!-- Bottom bar for GPS info -->
+  <div id="gps-bar">
+    <span id="gps-location">📍 Locating…</span>
+    <span class="sep">|</span>
+    <span id="gps-speed">⏱️ Speed: 0 km/h</span>
+    <button id="unit-btn" type="button" onclick="toggleUnits()">Toggle Units (km/h)</button>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+
+  <script>
+    // ===== CONFIG =====
+    const MAPTILER_KEY = "MpDV384cXMNO273WsuTG"; // your key
+
+    // ===== MAP INIT =====
+    const map = L.map('map', {
+      zoomControl: false  // remove default position…
+    }).setView([53.35, -6.26], 8);
+
+    // add zoom bottom-right
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    // tiles
+    const mapTiler = L.tileLayer(
+      `https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`,
+      { attribution: '&copy; OpenStreetMap • &copy; MapTiler' }
+    );
+
+    // fallback to OSM if MapTiler fails (e.g., key blocked)
+    const osm = L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { attribution: '&copy; OpenStreetMap contributors' }
+    );
+
+    mapTiler.on('tileerror', () => {
+      if (!map.hasLayer(osm)) {
+        osm.addTo(map);
+      }
+    });
+
+    mapTiler.addTo(map);
+
+    // ===== GPS + SPEED =====
+    let speedUnit = "kmh";   // "kmh" | "mph" | "knots"
+    let lastSpeedMs = 0;     // last speed in m/s for instant re-render
+    let gotFix = false;
+
+    const locEl  = document.getElementById("gps-location");
+    const spdEl  = document.getElementById("gps-speed");
+    const unitBtn = document.getElementById("unit-btn");
+    const badge  = document.getElementById("badge");
+
+    function convertSpeed(ms) {
+      if (ms == null || isNaN(ms)) ms = 0;
+      if (speedUnit === "kmh")   return (ms * 3.6).toFixed(1) + " km/h";
+      if (speedUnit === "mph")   return (ms * 2.23694).toFixed(1) + " mph";
+      /* knots */                return (ms * 1.94384).toFixed(1) + " knots";
+    }
+
+    function updateSpeedDisplay() {
+      spdEl.textContent = "⏱️ Speed: " + convertSpeed(lastSpeedMs);
+      unitBtn.textContent = "Toggle Units (" + (speedUnit === "kmh" ? "km/h" : speedUnit) + ")";
+    }
+
+    function toggleUnits() {
+      speedUnit = (speedUnit === "kmh") ? "mph" : (speedUnit === "mph") ? "knots" : "kmh";
+      updateSpeedDisplay();
+    }
+
+    function setBadge(lat, lon, extra = "") {
+      badge.textContent = `${lat.toFixed(5)}, ${lon.toFixed(5)}${extra ? " — " + extra : ""}`;
+    }
+
+    if ("geolocation" in navigator) {
+      navigator.geolocation.watchPosition(
+        pos => {
+          const { latitude: lat, longitude: lon, speed } = pos.coords;
+          lastSpeedMs = (speed == null) ? 0 : speed;
+
+          // update UI
+          locEl.textContent = `📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+          updateSpeedDisplay();
+          setBadge(lat, lon, convertSpeed(lastSpeedMs));
+
+          // place/refresh marker only on first fix (avoid map jumping)
+          if (!gotFix) {
+            gotFix = true;
+            map.setView([lat, lon], 14);
+            L.marker([lat, lon]).addTo(map).bindPopup("You are here").openPopup();
+          }
+        },
+        err => {
+          locEl.textContent = "📍 Location unavailable";
+          console.error("Geolocation error:", err);
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+      );
+    } else {
+      locEl.textContent = "📍 Geolocation not supported";
+    }
+
+    // ensure map resizes correctly if soft keyboard changes viewport height
+    window.addEventListener('resize', () => {
+      map.invalidateSize();
+    });
+  </script>
+</body>
+</html>  // --- MAP INIT (Leaflet + MapTiler) ---
   const MAPTILER_KEY = "MpDV384cXMNO273WsuTG"; // your key
   const map = L.map('map').setView([53.35, -6.26], 8);
   L.tileLayer(
