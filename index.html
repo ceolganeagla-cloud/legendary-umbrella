@@ -24,7 +24,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/
 aside{background:var(--panel);border-radius:16px;overflow:auto;padding:12px}
 .brand{display:flex;gap:12px;align-items:center;margin-bottom:10px}
 .logo{width:48px;height:48px;border-radius:12px;overflow:hidden;background:#000;flex:0 0 48px}
-.logo img{width:100%;height:100%;object-fit:contain;background:#fff} /* logo contained */
+.logo img{width:100%;height:100%;object-fit:contain;background:#fff}
 h1{font-size:18px;margin:0}.sub{color:var(--muted);font-size:12px}
 
 .card{background:var(--card);border-radius:12px;padding:12px;margin-bottom:10px}
@@ -36,11 +36,11 @@ input[type=range]{width:180px}
 
 #hourly{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}
 .hour{min-width:96px;padding:8px;border-radius:10px;background:rgba(255,255,255,.06);text-align:center}
-.hour .ico{width:26px;height:26px;margin:6px auto}
+.hour .ico{font-size:22px;margin:4px 0}
 
 #daily{display:grid;grid-template-columns:repeat(7,minmax(96px,1fr));gap:8px}
 .day{padding:8px;border-radius:10px;background:rgba(255,255,255,.06);text-align:center}
-.day .ico{width:26px;height:26px;margin:6px auto}
+.day .ico{font-size:22px;margin:4px 0}
 
 #searchWrap{position:relative}
 #suggest{position:absolute;left:0;right:0;top:44px;background:#0f131c;border:1px solid rgba(255,255,255,.15);border-radius:10px;overflow:hidden;display:none;max-height:240px;overflow:auto;z-index:20}
@@ -52,7 +52,7 @@ input[type=range]{width:180px}
 .map-badge{position:absolute;left:10px;top:10px;background:rgba(18,18,22,.88);color:#fff;
   border:1px solid rgba(255,255,255,.2);padding:6px 8px;border-radius:8px;font-size:12px;z-index:450}
 
-.leaflet-popup { margin-top: 30px !important; } /* fix popup covering zoom buttons */
+.leaflet-popup { margin-top: 30px !important; }
 
 @media (max-width:860px){.app{grid-template-columns:1fr;grid-template-rows:50vh 1fr}}
 </style>
@@ -124,7 +124,21 @@ input[type=range]{width:180px}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 /* ===== CONFIG ===== */
-const MAPTILER_KEY = 'MpDV384cXMNO273WsuTG'; // your key
+const MAPTILER_KEY = 'MpDV384cXMNO273WsuTG';
+
+/* ===== ICONS ===== */
+function wIcon(code) {
+  const map = {
+    0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️",
+    45: "🌫️", 48: "🌫️",
+    51: "🌦️", 61: "🌧️", 63: "🌧️", 65: "🌧️",
+    66: "🌧️", 67: "🌧️",
+    71: "❄️", 73: "❄️", 75: "❄️", 77: "❄️",
+    80: "🌧️", 81: "🌧️", 82: "🌧️",
+    95: "⛈️", 96: "⛈️", 99: "⛈️"
+  };
+  return `<div class="ico">${map[code] || "❔"}</div>`;
+}
 
 /* ===== MAP ===== */
 const map = L.map('map', { zoomControl: true }).setView([53.35,-6.26], 7);
@@ -132,7 +146,6 @@ L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPT
   attribution: '&copy; OpenStreetMap • &copy; MapTiler'
 }).addTo(map);
 
-// radar overlay
 map.createPane('radar'); map.getPane('radar').style.zIndex = 450;
 const radar = L.tileLayer('', {pane:'radar', opacity:0.7}).addTo(map);
 
@@ -146,12 +159,11 @@ const el = {
 const toF = c => Math.round(c*9/5+32);
 const msToMph = ms => Math.round(ms*2.23694);
 const mmToIn = mm => Math.round(mm/25.4*100)/100;
-const wIcon = code => '☁';
 
-/* Radar frames */
+/* ===== RADAR ===== */
 let RV = { frames: [], index: 0, timer: null };
 async function loadRadar() {
-  const r = await fetch('https://api.rainviewer.com/public/weather-maps.json', {cache:'no-store'});
+  const r = await fetch('https://api.rainviewer.com/public/weather-maps.json',{cache:'no-store'});
   const j = await r.json();
   RV.frames = (j.radar?.past||[]).concat(j.radar?.nowcast||[]);
   el.frame.max = Math.max(RV.frames.length-1,0);
@@ -172,7 +184,7 @@ el.play.onclick=()=>{
 el.opacity.oninput=e=>radar.setOpacity(+e.target.value);
 $('refresh').onclick=loadRadar;
 
-/* Weather */
+/* ===== WEATHER ===== */
 async function updateWeather(lat,lon,label='') {
   const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
    +`&current_weather=true&hourly=temperature_2m,precipitation,cloudcover,windspeed_10m,weathercode,snowfall`
@@ -187,7 +199,7 @@ async function updateWeather(lat,lon,label='') {
   const snow=j.hourly?.snowfall?.[0]??0;
   const sunrise=j.daily.sunrise?.[0], sunset=j.daily.sunset?.[0];
 
-  el.nowIcon.textContent=wIcon(j.current_weather?.weathercode??0);
+  el.nowIcon.innerHTML=wIcon(j.current_weather?.weathercode??0);
   el.temp.textContent=metric?`${tC}°C`:`${toF(tC)}°F`;
   el.wind.textContent=metric?`Wind ${Math.round(wind)} m/s`:`Wind ${msToMph(wind)} mph`;
   el.precip.textContent=metric?`Precip ${p} mm`:`Precip ${mmToIn(p)} in`;
@@ -202,7 +214,7 @@ async function updateWeather(lat,lon,label='') {
     const tc=j.hourly.temperature_2m[i];
     const pp=j.hourly.precipitation[i];
     const div=document.createElement('div');div.className='hour';
-    div.innerHTML=`${ti}<div class="ico">${wIcon(j.hourly.weathercode[i])}</div>`
+    div.innerHTML=`${ti}${wIcon(j.hourly.weathercode[i])}`
       +`${metric?Math.round(tc)+'°C':toF(tc)+'°F'}<br>${metric?pp+' mm':mmToIn(pp)+' in'}`;
     el.hourly.appendChild(div);
   }
@@ -211,7 +223,7 @@ async function updateWeather(lat,lon,label='') {
     const wd=new Date(j.daily.time[i]).toLocaleDateString(undefined,{weekday:'short'});
     const tmax=j.daily.temperature_2m_max[i], tmin=j.daily.temperature_2m_min[i];
     const div=document.createElement('div');div.className='day';
-    div.innerHTML=`${wd}<div class="ico">${wIcon(0)}</div>`
+    div.innerHTML=`${wd}${wIcon(j.daily.weathercode?.[i]??0)}`
       +`${metric?Math.round(tmax)+'°C / '+Math.round(tmin)+'°C':toF(tmax)+'°F / '+toF(tmin)+'°F'}<br>`
       +`${metric?(j.daily.precipitation_sum?.[i]??0)+' mm':mmToIn(j.daily.precipitation_sum?.[i]??0)+' in'}`;
     el.daily.appendChild(div);
