@@ -1,80 +1,37 @@
-
-// /api/tomorrow
-// Proxies Tomorrow.io Timelines v4 and NORMALIZES to your app's shape.
-// ENV needed in Vercel: TOMORROW_API_KEY
-
 export default async function handler(req, res) {
-  // CORS
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") return res.status(204).end();
+  const { lat, lon } = req.query;
+  const key = process.env.TOMORROW_API_KEY; // stored securely in Vercel
 
-  try {
-    const lat = parseFloat(req.query.lat);
-    const lon = parseFloat(req.query.lon);
-    if (!isFinite(lat) || !isFinite(lon)) {
-      return res.status(400).json({ error: "lat/lon required" });
+  const url = `https://api.tomorrow.io/v4/weather/forecast?location=${lat},${lon}&timesteps=1h&apikey=${key}`;
+  const r = await fetch(url);
+  const j = await r.json();
+
+  // normalize -> same format as Open-Meteo
+  const hourly = j.timelines?.hourly || [];
+  const daily = j.timelines?.daily || [];
+  const now = hourly[0] || {};
+
+  res.status(200).json({
+    current: {
+      tempC: now.values?.temperature ?? null,
+      windMs: now.values?.windSpeed ?? null,
+      precipMm: now.values?.precipitationIntensity ?? null,
+      cloud: now.values?.cloudCover ?? null,
+      sunrise: daily[0]?.values?.sunriseTime ?? null,
+      sunset: daily[0]?.values?.sunsetTime ?? null,
+    },
+    hourly: {
+      time: hourly.map(h => h.time),
+      tempC: hourly.map(h => h.values?.temperature ?? null),
+      precipMm: hourly.map(h => h.values?.precipitationIntensity ?? 0),
+      code: hourly.map(h => h.values?.weatherCode ?? 0),
+    },
+    daily: {
+      time: daily.map(d => d.time),
+      tmaxC: daily.map(d => d.values?.temperatureMax ?? null),
+      tminC: daily.map(d => d.values?.temperatureMin ?? null),
+      precipMm: daily.map(d => d.values?.precipitationIntensityAvg ?? 0),
+      code: daily.map(d => d.values?.weatherCodeMax ?? 0),
     }
-
-    const apiKey = process.env.TOMORROW_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: "TOMORROW_API_KEY missing" });
-
-    const fields = [
-      "temperature",
-      "precipitationIntensity",
-      "cloudCover",
-      "windSpeed",
-      "weatherCode",
-      "snowIntensity",
-      "sunriseTime",
-      "sunsetTime",
-      "temperatureMax",
-      "temperatureMin"
-    ].join(",");
-
-    const url =
-      `https://api.tomorrow.io/v4/timelines?location=${lat},${lon}` +
-      `&fields=${fields}&timesteps=current,hourly,daily&units=metric&apikey=${encodeURIComponent(apiKey)}`;
-
-    const r = await fetch(url);
-    if (!r.ok) return res.status(r.status).json({ error: `Tomorrow.io ${r.status}` });
-    const j = await r.json();
-
-    const getT = (ts) => (j?.data?.timelines || []).find(t => t.timestep === ts)?.intervals || [];
-    const curInt = getT("current")[0]?.values || {};
-    const hr = getT("hourly");
-    const dy = getT("daily");
-
-    const normalized = {
-      current: {
-        tempC: curInt.temperature ?? null,
-        code: curInt.weatherCode ?? 3,
-        windMs: (curInt.windSpeed ?? 0) / 3.6, // kph -> m/s
-        precipMm: curInt.precipitationIntensity ?? 0,
-        cloud: curInt.cloudCover ?? 0,
-        snowMm: curInt.snowIntensity ?? 0,
-        sunrise: dy[0]?.values?.sunriseTime ?? null,
-        sunset:  dy[0]?.values?.sunsetTime ?? null
-      },
-      hourly: {
-        time: hr.map(i => i.startTime),
-        tempC: hr.map(i => i.values.temperature),
-        precipMm: hr.map(i => i.values.precipitationIntensity ?? 0),
-        code: hr.map(i => i.values.weatherCode ?? 3)
-      },
-      daily: {
-        time: dy.map(i => i.startTime),
-        tmaxC: dy.map(i => i.values.temperatureMax),
-        tminC: dy.map(i => i.values.temperatureMin),
-        precipMm: dy.map(i => i.values.precipitationIntensity ?? 0),
-        code: dy.map(i => i.values.weatherCode ?? 3)
-      }
-    };
-
-    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=60");
-    return res.status(200).json(normalized);
-  } catch (e) {
-    return res.status(500).json({ error: e.message || String(e) });
-  }
+  });
 }
