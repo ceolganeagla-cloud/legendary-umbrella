@@ -1,358 +1,207 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ceol Gan Eagla — Weather</title>
 
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="icon" href="favicon.ico" />
+  <!-- PWA manifest + icons -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
 
-  <!-- Map -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet + MapTiler -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
   <style>
-    :root {
-      --bg: #0f1115;
-      --panel: #171a22;
-      --panel-2: #222734;
-      --text: #e8ecf1;
-      --muted: #9aa4b2;
-      --accent: #3ba0ff;
-      --radius: 14px;
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0d1117;
+      color: #fff;
+      text-align: center;
     }
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; background: var(--bg); color: var(--text); }
-
-    /* Top bar */
-    #topbar {
-      display: flex; align-items: center; gap: 12px;
-      padding: 10px 14px; position: sticky; top: 0; z-index: 3;
-      background: linear-gradient(180deg, rgba(15,17,21,.94), rgba(15,17,21,.86));
-      backdrop-filter: blur(8px); border-bottom: 1px solid rgba(255,255,255,.06);
+    header {
+      padding: 10px;
     }
-    #brand {
-      display: flex; align-items: center; gap: 10px;
+    header img {
+      max-width: 100px;
+      height: auto;
+      border-radius: 12px;
     }
-    #brand img { width: 36px; height: 36px; object-fit: contain; border-radius: 8px; }
-    #brand h1 { font-size: 18px; margin: 0; line-height: 1.1; }
-    #brand small { color: var(--muted); font-weight: 500; }
-
-    /* Map */
-    #map-wrap { padding: 12px; }
     #map {
-      height: 52vh; width: 100%;
-      border-radius: var(--radius);
-      overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,.35);
+      height: 60vh;
+      width: 100%;
     }
-    /* move zoom to top-right so it doesn't cover popups */
-    .leaflet-top.leaflet-left { right: 10px; left: auto; }
-    .leaflet-control-zoom { border-radius: 10px; overflow: hidden; }
-
-    /* Controls panel */
     #controls {
-      display: grid; gap: 10px; grid-template-columns: 1fr auto auto auto;
-      padding: 12px; margin: 0 12px 10px;
-      background: var(--panel); border-radius: var(--radius); border: 1px solid rgba(255,255,255,.06);
+      padding: 10px;
     }
-    @media (max-width: 760px) {
-      #controls { grid-template-columns: 1fr 1fr; }
+    .forecast {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      padding: 10px;
     }
-
-    label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
-    .field { display: flex; flex-direction: column; }
-    input, select, button {
-      background: var(--panel-2); color: var(--text);
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 10px; padding: 10px; font-size: 14px;
+    .forecast-day {
+      background: #222;
+      padding: 10px;
+      border-radius: 8px;
+      width: 80px;
     }
-    button { cursor: pointer; }
-    button.primary { background: var(--accent); border-color: var(--accent); color: #02131f; font-weight: 700; }
-
-    /* Info cards */
-    .cards { display: grid; gap: 12px; grid-template-columns: 1fr; padding: 0 12px 24px; }
-    .card {
-      background: var(--panel); border: 1px solid rgba(255,255,255,.06);
-      border-radius: var(--radius); padding: 12px;
+    #gps-bar {
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      font-size: 14px;
+      padding: 8px;
+      text-align: center;
+      position: relative;
+      bottom: 0;
+      width: 100%;
+      border-top: 1px solid #333;
     }
-    .subtle { color: var(--muted); font-size: 13px; }
-    .row { display: flex; gap: 14px; flex-wrap: wrap; }
-    .pill {
-      padding: 8px 10px; background: var(--panel-2); border: 1px solid rgba(255,255,255,.08);
-      border-radius: 10px; min-width: 100px; text-align: center;
+    #gps-bar button {
+      background: #444;
+      border: none;
+      color: #fff;
+      padding: 4px 8px;
+      margin-left: 6px;
+      cursor: pointer;
+      border-radius: 4px;
     }
-
-    .scroll-x { display: grid; grid-auto-flow: column; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
-    .hour, .day {
-      background: var(--panel-2); border: 1px solid rgba(255,255,255,.08);
-      padding: 10px; border-radius: 10px; min-width: 120px; text-align: center;
-    }
-    .muted { color: var(--muted); font-size: 12px; }
   </style>
 </head>
 <body>
-  <!-- Top bar with contained logo -->
-  <div id="topbar">
-    <div id="brand">
-      <img src="icon-192.png" alt="Ceol Gan Eagla Logo" />
-      <div>
-        <h1>Ceol Gan Eagla — Weather</h1>
-        <small>Sources: OSM • Map tiles OSM • Open-Meteo • Tomorrow.io • Speedome</small>
-      </div>
-    </div>
-  </div>
+  <header>
+    <img src="icon-192.png" alt="Ceol Gan Eagla Logo">
+    <h2>Ceol Gan Eagla — Weather</h2>
+    <small>Sources: OSM • MapTiler • Open-Meteo • RainViewer</small>
+  </header>
 
   <!-- Map -->
-  <div id="map-wrap"><div id="map"></div></div>
+  <div id="map"></div>
 
   <!-- Controls -->
   <div id="controls">
-    <div class="field" style="grid-column: 1 / -1;">
-      <label for="search">Search place or Eircode</label>
-      <input id="search" placeholder="e.g. D02 X285 or Maynooth" />
-    </div>
-
-    <div class="field">
-      <label for="source">Weather Source</label>
-      <select id="source">
-        <option value="tomorrow">Tomorrow.io (proxy)</option>
-        <option value="speedome">Speedome (proxy)</option>
-        <option value="openmeteo" selected>Open-Meteo (free)</option>
-      </select>
-    </div>
-
-    <div class="field">
-      <label for="units">Units</label>
-      <select id="units">
-        <option value="metric" selected>Metric</option>
-        <option value="imperial">Imperial</option>
-      </select>
-    </div>
-
-    <div class="field" style="align-self:end; display:flex; gap:8px;">
-      <button onclick="goMe()">📍 Me</button>
-      <button onclick="doSearch()">🔍 Search</button>
-      <button class="primary" onclick="refresh()">↻ Refresh</button>
-    </div>
+    <input type="text" id="search" placeholder="Search place or Eircode…">
+    <button onclick="searchLocation()">🔍</button>
   </div>
 
-  <!-- Info -->
-  <div class="cards">
-    <div class="card" id="current">
-      <div class="subtle">Current</div>
-      <div class="row" id="current-row"></div>
-    </div>
+  <!-- Weather info -->
+  <div id="info">
+    <p id="now">Loading current weather…</p>
+    <p id="sun"></p>
+    <p id="risk"></p>
+    <p id="updated"></p>
+  </div>
 
-    <div class="card">
-      <div class="subtle">Next 24 hours</div>
-      <div class="scroll-x" id="hourly"></div>
-    </div>
+  <!-- Forecast -->
+  <h3>7-day forecast</h3>
+  <div id="forecast" class="forecast"></div>
 
-    <div class="card">
-      <div class="subtle">7-day forecast</div>
-      <div class="scroll-x" id="daily"></div>
-    </div>
+  <!-- GPS Bottom Bar -->
+  <div id="gps-bar">
+    <span id="gps-location">📍 Locating…</span> |
+    <span id="gps-speed">⏱️ Speed: 0 km/h</span> |
+    <button onclick="toggleUnits()">Toggle Units</button>
   </div>
 
   <script>
-    // ==== CONFIG ====
-    // Replace with your deployed Vercel project domain:
-    const API_BASE = "https://<your-project>.vercel.app";
-
-    // ==== MAP ====
-    const map = L.map("map", { zoomControl: true }).setView([53.34, -6.26], 8);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "© OpenStreetMap",
+    // ======================
+    // Map Setup
+    // ======================
+    const map = L.map('map').setView([53.3498, -6.2603], 8);
+    L.tileLayer(`https://api.maptiler.com/maps/streets/{z}/{x}/{y}.png?key=YOUR_MAPTILER_KEY`, {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/">OSM</a> &copy; <a href="https://www.maptiler.com/">MapTiler</a>'
     }).addTo(map);
-    let marker;
 
-    function setMarker(lat, lon, label) {
-      if (marker) map.removeLayer(marker);
-      marker = L.marker([lat, lon]).addTo(map);
-      marker.bindPopup(label || "Location").openPopup();
-      map.setView([lat, lon], 11);
-    }
+    let marker = L.marker([53.3498, -6.2603]).addTo(map);
 
-    // ==== FETCHERS (ALL NORMALIZE) ====
+    // ======================
+    // Weather API
+    // ======================
+    async function getWeather(lat, lon) {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,precipitation,cloudcover,weathercode,snowfall&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum,snowfall_sum&current_weather=true&timezone=auto`;
+      const res = await fetch(url);
+      const data = await res.json();
 
-// Example: fetch from Vercel API proxy
-async function getWeather(lat, lon) {
-  const res = await fetch(`/api/tomorrow?lat=${lat}&lon=${lon}`);
-  const data = await res.json();
-  console.log(data);
-  // use data to update the UI...
-}
+      document.getElementById("now").textContent =
+        `🌡️ Now: ${data.current_weather.temperature}°C, Wind ${data.current_weather.windspeed} km/h`;
 
+      document.getElementById("sun").textContent =
+        `☀️ Sunrise: ${data.daily.sunrise[0].slice(11,16)} | 🌙 Sunset: ${data.daily.sunset[0].slice(11,16)}`;
 
-    async function fetchSpeedome(lat, lon) {
-      const r = await fetch(`${API_BASE}/api/speedome?lat=${lat}&lon=${lon}`, { cache: "no-store" });
-      if (!r.ok) throw new Error("Speedome proxy failed");
-      return await r.json();
-    }
+      document.getElementById("risk").textContent =
+        `❄️ Snow: ${data.daily.snowfall_sum[0]}mm | 🌧️ Rain: ${data.daily.precipitation_sum[0]}mm`;
 
-    // Open-Meteo (no key). Normalize to the same shape.
-    async function fetchOpenMeteo(lat, lon) {
-      const url =
-        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-        `&hourly=temperature_2m,precipitation,weathercode,cloudcover,windspeed_10m` +
-        `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode,sunrise,sunset` +
-        `&current_weather=true&timezone=auto`;
-      const r = await fetch(url);
-      if (!r.ok) throw new Error("Open-Meteo failed");
-      const j = await r.json();
+      document.getElementById("updated").textContent = `Last update: ${new Date().toLocaleTimeString()}`;
 
-      const cw = j.current_weather || {};
-      const daily = j.daily || {};
-      const hourly = j.hourly || {};
-
-      return {
-        current: {
-          tempC: cw.temperature ?? null,
-          code: cw.weathercode ?? 3,
-          windMs: cw.windspeed != null ? (cw.windspeed / 3.6) : null,
-          precipMm: 0, // not in current_weather; leave 0
-          cloud: hourly.cloudcover ? hourly.cloudcover[0] : null,
-          snowMm: 0,
-          sunrise: daily.sunrise ? daily.sunrise[0] : null,
-          sunset:  daily.sunset ? daily.sunset[0] : null
-        },
-        hourly: {
-          time: hourly.time || [],
-          tempC: hourly.temperature_2m || [],
-          precipMm: hourly.precipitation || [],
-          code: hourly.weathercode || []
-        },
-        daily: {
-          time: daily.time || [],
-          tmaxC: daily.temperature_2m_max || [],
-          tminC: daily.temperature_2m_min || [],
-          precipMm: daily.precipitation_sum || [],
-          code: daily.weathercode || []
-        }
-      };
-    }
-
-    // ==== UI / RENDER ====
-
-    function toF(c) { return (c * 9/5) + 32; }
-    function msToMph(ms) { return ms * 2.23694; }
-    function msToKmh(ms) { return ms * 3.6; }
-
-    function fmtTemp(c, units) {
-      if (c == null) return "–";
-      return units === "imperial" ? `${Math.round(toF(c))}°F` : `${Math.round(c)}°C`;
-    }
-    function fmtWind(ms, units) {
-      if (ms == null) return "–";
-      return units === "imperial" ? `${msToMph(ms).toFixed(1)} mph` : `${msToKmh(ms).toFixed(1)} km/h`;
-    }
-
-    function render(data, units) {
-      const cur = data.current || {};
-      const currentRow = document.getElementById("current-row");
-      currentRow.innerHTML = `
-        <div class="pill">Temp<br><b>${fmtTemp(cur.tempC, units)}</b></div>
-        <div class="pill">Wind<br><b>${fmtWind(cur.windMs, units)}</b></div>
-        <div class="pill">Cloud<br><b>${cur.cloud ?? "–"}%</b></div>
-        <div class="pill">Precip<br><b>${cur.precipMm ?? "–"} mm</b></div>
-        <div class="pill">Sunrise<br><b>${cur.sunrise ? new Date(cur.sunrise).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : "–"}</b></div>
-        <div class="pill">Sunset<br><b>${cur.sunset ? new Date(cur.sunset).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : "–"}</b></div>
-      `;
-
-      // hourly next 24
-      const hourly = document.getElementById("hourly");
-      hourly.innerHTML = "";
-      if (data.hourly && data.hourly.time) {
-        for (let i = 0; i < Math.min(24, data.hourly.time.length); i++) {
-          const t = data.hourly.time[i];
-          const temp = data.hourly.tempC[i];
-          const p = data.hourly.precipMm[i];
-          hourly.insertAdjacentHTML("beforeend", `
-            <div class="hour">
-              <div class="muted">${new Date(t).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
-              <div><b>${fmtTemp(temp, units)}</b></div>
-              <div class="muted">${p ?? 0} mm</div>
-            </div>
-          `);
-        }
-      }
-
-      // daily 7
-      const daily = document.getElementById("daily");
-      daily.innerHTML = "";
-      if (data.daily && data.daily.time) {
-        for (let i = 0; i < Math.min(7, data.daily.time.length); i++) {
-          const t = data.daily.time[i];
-          const tmax = data.daily.tmaxC[i];
-          const tmin = data.daily.tminC[i];
-          const p = data.daily.precipMm[i];
-          daily.insertAdjacentHTML("beforeend", `
-            <div class="day">
-              <div class="muted">${new Date(t).toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'})}</div>
-              <div><b>${fmtTemp(tmax, units)} / ${fmtTemp(tmin, units)}</b></div>
-              <div class="muted">${p ?? 0} mm</div>
-            </div>
-          `);
-        }
+      const forecast = document.getElementById("forecast");
+      forecast.innerHTML = "";
+      for (let i = 0; i < data.daily.time.length; i++) {
+        const day = document.createElement("div");
+        day.className = "forecast-day";
+        day.innerHTML = `
+          <strong>${data.daily.time[i].slice(5)}</strong><br>
+          🌡️ ${data.daily.temperature_2m_max[i]}° / ${data.daily.temperature_2m_min[i]}°<br>
+          🌧️ ${data.daily.precipitation_sum[i]}mm
+        `;
+        forecast.appendChild(day);
       }
     }
 
-    async function update(lat, lon, label) {
-      setMarker(lat, lon, label);
-      const src = document.getElementById("source").value;
-      const units = document.getElementById("units").value;
+    getWeather(53.3498, -6.2603);
 
-      let data;
-      if (src === "tomorrow")       data = await fetchTomorrow(lat, lon);
-      else if (src === "speedome")  data = await fetchSpeedome(lat, lon);
-      else                          data = await fetchOpenMeteo(lat, lon);
-
-      render(data, units);
-      // Save last location
-      localStorage.setItem("cge_last", JSON.stringify({ lat, lon, label, src, units }));
+    function searchLocation() {
+      const place = document.getElementById("search").value;
+      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${place}`)
+        .then(r => r.json())
+        .then(d => {
+          if (d.length > 0) {
+            const lat = d[0].lat, lon = d[0].lon;
+            map.setView([lat, lon], 10);
+            marker.setLatLng([lat, lon]);
+            getWeather(lat, lon);
+          }
+        });
     }
 
-    function goMe() {
-      if (!navigator.geolocation) return alert("Geolocation not available.");
-      navigator.geolocation.getCurrentPosition(
-        pos => update(pos.coords.latitude, pos.coords.longitude, "My location"),
-        err => alert("Location error: " + err.message),
-        { enableHighAccuracy: true, timeout: 10000 }
+    // ======================
+    // GPS Speed + Location
+    // ======================
+    let speedUnit = "kmh";
+
+    function toggleUnits() {
+      if (speedUnit === "kmh") speedUnit = "mph";
+      else if (speedUnit === "mph") speedUnit = "knots";
+      else speedUnit = "kmh";
+    }
+
+    function convertSpeed(ms) {
+      if (speedUnit === "kmh") return (ms * 3.6).toFixed(1) + " km/h";
+      if (speedUnit === "mph") return (ms * 2.23694).toFixed(1) + " mph";
+      if (speedUnit === "knots") return (ms * 1.94384).toFixed(1) + " knots";
+    }
+
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(
+        pos => {
+          const lat = pos.coords.latitude.toFixed(5);
+          const lon = pos.coords.longitude.toFixed(5);
+          document.getElementById("gps-location").textContent = `📍 ${lat}, ${lon}`;
+
+          const speed = pos.coords.speed;
+          document.getElementById("gps-speed").textContent =
+            "⏱️ Speed: " + (speed ? convertSpeed(speed) : "0");
+        },
+        err => {
+          document.getElementById("gps-location").textContent = "📍 Location unavailable";
+          console.error(err);
+        },
+        { enableHighAccuracy: true }
       );
+    } else {
+      document.getElementById("gps-location").textContent = "📍 Geolocation not supported";
     }
-
-    async function doSearch() {
-      const q = document.getElementById("search").value.trim();
-      if (!q) return;
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`;
-      const r = await fetch(url, { headers: { "Accept-Language": "en" } });
-      const j = await r.json();
-      if (!j.length) return alert("Place not found.");
-      const best = j[0];
-      update(parseFloat(best.lat), parseFloat(best.lon), best.display_name || q);
-    }
-
-    function refresh() {
-      const last = JSON.parse(localStorage.getItem("cge_last") || "null");
-      if (last) update(last.lat, last.lon, last.label);
-    }
-
-    // Restore last session or default
-    (function init() {
-      const last = JSON.parse(localStorage.getItem("cge_last") || "null");
-      if (last) {
-        document.getElementById("source").value = last.src || "openmeteo";
-        document.getElementById("units").value = last.units || "metric";
-        update(last.lat, last.lon, last.label);
-      } else {
-        update(53.34, -6.26, "Dublin");
-      }
-      // react to unit/source change
-      document.getElementById("source").addEventListener("change", refresh);
-      document.getElementById("units").addEventListener("change", refresh);
-    })();
   </script>
 </body>
 </html>
