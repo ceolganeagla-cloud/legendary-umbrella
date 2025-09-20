@@ -37,8 +37,6 @@ input[type=range]{width:160px}
 .item{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer}
 .item:hover{background:rgba(255,255,255,.06)}
 .chip{padding:6px 8px;border-radius:10px;background:rgba(255,255,255,.06);font-size:12px}
-.map-info{background:rgba(18,18,22,.88);color:#fff;border:1px solid rgba(255,255,255,.2);padding:6px 8px;border-radius:8px;font-size:12px}
-.map-info .line{opacity:.8}
 @media (max-width:860px){.app{grid-template-columns:1fr;grid-template-rows:50vh 1fr}}
 </style>
 </head>
@@ -58,6 +56,106 @@ input[type=range]{width:160px}
     </div>
 
     <div class="card">
+      <input id="search" placeholder="Search place or Eircode…"/>
+      <div id="suggest"></div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <button id="btnGeo" class="btn">📍 Me</button>
+        <button id="btnPin"  class="btn ghost">📌 Pin</button>
+        <label>Units
+          <select id="units" class="btn ghost">
+            <option value="metric" selected>Metric (°C)</option>
+            <option value="imperial">Imperial (°F)</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div id="nowIcon"></div>
+        <div class="chip" id="temp">—</div>
+        <div class="chip" id="wind">Wind —</div>
+        <div class="chip" id="precip">Precip —</div>
+        <div class="chip" id="cloud">Cloud —</div>
+        <div class="chip" id="sun">Sunrise — / Sunset —</div>
+        <div class="chip" id="risk">—</div>
+        <div class="chip" id="updated">—</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sub" style="margin-bottom:6px">Next 24 hours</div>
+      <div id="hourly">Loading…</div>
+    </div>
+    <div class="card">
+      <div class="sub" style="margin-bottom:6px">7-day forecast</div>
+      <div id="daily">Loading…</div>
+    </div>
+  </aside>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// === CONFIG ===
+const MT='MpDV384cXMNO273WsuTG';
+const map = L.map('map').setView([53.35,-6.26],7);
+L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MT}`,{attribution:'&copy; MapTiler &copy; OSM'}).addTo(map);
+
+// === ELEMENTS ===
+const el={temp:document.getElementById('temp'),wind:document.getElementById('wind'),precip:document.getElementById('precip'),
+cloud:document.getElementById('cloud'),sun:document.getElementById('sun'),risk:document.getElementById('risk'),
+updated:document.getElementById('updated'),hourly:document.getElementById('hourly'),daily:document.getElementById('daily'),
+nowIcon:document.getElementById('nowIcon')};
+
+function toF(c){return c*9/5+32}
+function msToMph(ms){return Math.round(ms*2.23694)}
+function mmToIn(mm){return (mm/25.4).toFixed(2)}
+function ico(code){return `<div class="ico">☁</div>`}
+
+// === WEATHER FETCH ===
+async function loadWeather(lat,lon){
+ const metric=document.getElementById('units').value==="metric";
+ const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,cloudcover,precipitation,weathercode,windspeed_10m,snowfall&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=7&timezone=auto`;
+ const r=await fetch(url); const j=await r.json();
+
+ const tc=j.hourly.temperature_2m[0];
+ const wMs=j.hourly.windspeed_10m[0];
+ const pMm=j.hourly.precipitation[0];
+ const cl=j.hourly.cloudcover[0];
+ const snowH=j.hourly.snowfall[0];
+ const sunrise=j.daily.sunrise[0], sunset=j.daily.sunset[0];
+
+ el.nowIcon.innerHTML=ico(j.hourly.weathercode[0]);
+ el.temp.textContent= metric? `${tc}°C`:`${Math.round(toF(tc))}°F`;
+ el.wind.textContent= metric? `Wind ${wMs} m/s`: `Wind ${msToMph(wMs)} mph`;
+ el.precip.textContent= metric? `Precip ${pMm} mm`: `Precip ${mmToIn(pMm)} in`;
+ el.cloud.textContent=`Cloud ${cl}%`;
+ el.sun.textContent=`Sunrise ${new Date(sunrise).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} / Sunset ${new Date(sunset).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
+ el.risk.textContent=(snowH>0?`❄ snow`:"")+ (cl<=0&&pMm>0?` • 🌧 rain`:``)+(snowH>0?` • 🧊 ice risk`:"");
+ el.updated.textContent=`Updated ${new Date().toLocaleTimeString()}`;
+
+ // hourly
+ el.hourly.innerHTML="";
+ for(let i=0;i<24;i++){
+   const d=document.createElement('div'); d.className="hour";
+   d.innerHTML=`${j.hourly.time[i].slice(11,16)}<br>${ico()}<br>${metric?j.hourly.temperature_2m[i]+"°C":Math.round(toF(j.hourly.temperature_2m[i]))+"°F"}<br>${metric?j.hourly.precipitation[i]+" mm":mmToIn(j.hourly.precipitation[i])+" in"}`;
+   el.hourly.appendChild(d);
+ }
+ // daily
+ el.daily.innerHTML="";
+ for(let i=0;i<7;i++){
+   const d=document.createElement('div'); d.className="day";
+   d.innerHTML=`${new Date(j.daily.time[i]).toLocaleDateString(undefined,{weekday:'short'})}<br>${ico()}<br>${metric?j.daily.temperature_2m_max[i]+"°C / "+j.daily.temperature_2m_min[i]+"°C":Math.round(toF(j.daily.temperature_2m_max[i]))+"°F / "+Math.round(toF(j.daily.temperature_2m_min[i]))+"°F"}<br>`;
+   el.daily.appendChild(d);
+ }
+}
+loadWeather(53.35,-6.26);
+</script>
+</body>
+</html>    <div class="card">
       <input id="search" placeholder="Search place or Eircode…"/>
       <div id="suggest"></div>
     </div>
