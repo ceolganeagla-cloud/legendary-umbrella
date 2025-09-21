@@ -5,8 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Ceol Gan Eagla — Weather & Marine</title>
 
+<!-- Icons -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+
+<!-- Leaflet -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
 <style>
@@ -36,11 +39,17 @@ input[type=range]{width:180px}
 #daily{display:grid;grid-template-columns:repeat(7,minmax(90px,1fr));gap:8px}
 .day{background:rgba(255,255,255,.06);border-radius:10px;padding:8px;text-align:center}
 
-/* Map badge clear of zoom */
-.map-badge{position:absolute;left:58px;top:10px;background:rgba(18,18,22,.9);color:#fff;border:1px solid rgba(255,255,255,.2);padding:6px 8px;border-radius:8px;font-size:12px;z-index:450;pointer-events:none}
+/* Map badge clear of zoom; floating Speedome button */
+.map-badge{position:absolute;left:58px;top:10px;background:rgba(18,18,22,.9);color:#fff;border:1px solid rgba(255,255,255,.2);padding:6px 8px;border-radius:8px;font-size:12px;z-index:650;pointer-events:none}
 .leaflet-top.leaflet-left .leaflet-control-zoom{margin-top:10px;margin-left:10px}
+.fab{
+  position:absolute; right:12px; bottom:12px; z-index:700;
+  background:#fff; color:#111; border-radius:999px; padding:10px 12px;
+  box-shadow:0 4px 12px rgba(0,0,0,.35); cursor:pointer; user-select:none; font-weight:800
+}
+.fab:active{ transform:translateY(1px) }
 
-/* Speedometer HUD */
+/* Speedome HUD */
 #speedHUD{position:fixed;left:0;right:0;bottom:0;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(10,15,24,.92);backdrop-filter:blur(3px);z-index:9000}
 .speedWrap{display:flex;flex-direction:column;align-items:center;gap:8px}
 .speedVal{font-size:64px;line-height:1;font-weight:900;letter-spacing:2px}
@@ -57,14 +66,18 @@ input[type=range]{width:180px}
 </head>
 <body>
 <div class="app">
-  <div id="map"><div id="badge" class="map-badge">Locating…</div></div>
+  <div id="map">
+    <div id="badge" class="map-badge">Locating…</div>
+    <!-- Floating Speedome button -->
+    <div id="speedFab" class="fab" title="Speed HUD">⛵</div>
+  </div>
 
   <aside>
     <div class="brand">
       <div class="logo"><img src="logo.png" alt="Logo" onerror="this.onerror=null;this.src='icon-192.png'"></div>
       <div>
         <h1>Ceol Gan Eagla — Weather & Marine</h1>
-        <div class="sub">Sources: OSM • MapTiler • RainViewer • Open-Meteo • Nominatim • (optional) Tomorrow.io</div>
+        <div class="sub">Sources: OSM • MapTiler • RainViewer • Open-Meteo • Nominatim • (Tomorrow.io via proxy)</div>
       </div>
     </div>
 
@@ -130,6 +143,8 @@ input[type=range]{width:180px}
         <button id="toggleSpeed" class="btn ghost" type="button">Units: km/h</button>
         <div id="heading" class="chip">🧭 —°</div>
         <div id="max" class="chip">🏁 Max: 0</div>
+        <!-- Extra toggle inside the GPS card -->
+        <button id="toggleHUD" class="btn" type="button">Speedome HUD</button>
       </div>
     </div>
 
@@ -163,17 +178,18 @@ input[type=range]{width:180px}
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-/* Error banner */
+/* Error banner if something explodes */
 window.onerror = function(msg){ const e=document.getElementById('err'); e.textContent='Error: '+msg; e.style.display='block'; };
 
 (function(){
   /* ===== CONFIG ===== */
   const MAPTILER_KEY = 'MpDV384cXMNO273WsuTG'; // lock this key to your domain in MapTiler
 
-  /* ===== EL ===== */
+  /* ===== Elements ===== */
   const $ = id => document.getElementById(id);
   const el = {
     badge: $('badge'),
+    speedFab: $('speedFab'),
     search: $('search'), btnSearch: $('btnSearch'),
     btnGeo: $('btnGeo'), btnPin: $('btnPin'),
     units: $('units'), mapStyle: $('mapStyle'),
@@ -186,7 +202,9 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
     speedoBtn: $('speedoBtn'), speedHUD: $('speedHUD'), closeSpeed: $('closeSpeed'),
     hudVal: $('hudVal'), hudUnits: $('hudUnits'), hudFill: $('hudFill'),
     hudHead: $('hudHead'), hudMax: $('hudMax'), hudToggle: $('hudToggle'),
-    tomorrowWrap: $('tomorrowWrap'), useTomorrow: $('useTomorrow')
+    tomorrowWrap: $('tomorrowWrap'), useTomorrow: $('useTomorrow'),
+    toggleHUD: $('toggleHUD'),
+    err: $('err')
   };
 
   /* ===== MAP ===== */
@@ -198,39 +216,40 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
   };
   let base = L.tileLayer(styles.streets, { attribution: '&copy; OpenStreetMap • &copy; MapTiler' }).addTo(map);
   const markers = L.featureGroup().addTo(map);
+
+  // Radar pane
   map.createPane('radar'); map.getPane('radar').style.zIndex = 450;
   const radarLayer = L.tileLayer('', { pane:'radar', opacity:0.7 }).addTo(map);
 
-  /* ===== HELPERS ===== */
+  /* ===== Helpers ===== */
   let speedUnit='kmh', lastSpeedMs=0, maxSpeed=0, gpsWatchId=null, gotFix=false, radarTimer=null;
   const toF=c=>Math.round(c*9/5+32);
   const msToMph=ms=>Math.round(ms*2.23694);
-  const msToKn =ms=>Math.round(ms*1.94384);
   const mmToIn=mm=>Math.round(mm/25.4*100)/100;
+  const msToKn =ms=>Math.round(ms*1.94384);
   const iconFor=()=> '☁';
 
-  const fmtSpeed = ms=>{
-    if(ms==null||isNaN(ms)) ms=0;
+  const fmtSpeed=ms=>{
+    ms=(ms==null||isNaN(ms))?0:ms;
     if(speedUnit==='kmh') return Math.round(ms*3.6)+' km/h';
     if(speedUnit==='mph') return Math.round(ms*2.23694)+' mph';
     return Math.round(ms*1.94384)+' knots';
   };
 
-  function updateSpeedUI(heading){
-    el.gps.textContent = '⏱ '+fmtSpeed(lastSpeedMs);
-    const val = speedUnit==='kmh'? lastSpeedMs*3.6 : speedUnit==='mph'? lastSpeedMs*2.23694 : lastSpeedMs*1.94384;
-    const cap = speedUnit==='kmh'? 60 : speedUnit==='mph'? 40 : 30;
-    el.hudVal.textContent = Math.round(val);
-    el.hudUnits.textContent = (speedUnit==='kmh'?'km/h':speedUnit==='mph'?'mph':'knots');
-    el.hudFill.style.width = Math.min(100, Math.round(val/cap*100))+'%';
-    el.hudHead.textContent = '🧭 ' + (isFinite(heading)?Math.round(heading)+'°':'—°');
-    el.hudMax.textContent  = '🏁 Max ' + (speedUnit==='kmh'? Math.round(maxSpeed*3.6) : speedUnit==='mph'? Math.round(maxSpeed*2.23694) : Math.round(maxSpeed*1.94384));
-    el.toggleSpeed.textContent = 'Units: ' + (speedUnit==='kmh'?'km/h':speedUnit==='mph'?'mph':'knots');
+  function setMarker(lat,lon,label){
+    markers.clearLayers();
+    L.marker([lat,lon]).addTo(markers).bindPopup(label||'Here').openPopup();
   }
 
-  function setMarker(lat,lon,label){ markers.clearLayers(); L.marker([lat,lon]).addTo(markers).bindPopup(label||'Here').openPopup(); }
+  /* Toggle Speedome HUD helpers */
+  function toggleHUD(open){
+    const s = el.speedHUD;
+    if (!s) return;
+    if (typeof open === 'boolean') s.style.display = open ? 'flex' : 'none';
+    else s.style.display = (s.style.display === 'flex') ? 'none' : 'flex';
+  }
 
-  /* Map style switch */
+  /* ===== Map style switch ===== */
   el.mapStyle.addEventListener('change', e=>{
     const v=e.target.value;
     if (base) map.removeLayer(base);
@@ -241,11 +260,11 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
   const RV={frames:[],idx:0};
   function loadRadar(){
     fetch('https://api.rainviewer.com/public/weather-maps.json',{cache:'no-store'})
-    .then(r=>r.json()).then(j=>{
-      RV.frames=[...(j?.radar?.past||[]), ...(j?.radar?.nowcast||[])];
-      el.frame.max=Math.max(RV.frames.length-1,0);
-      setRadar(RV.frames.length-1);
-    }).catch(()=>{});
+      .then(r=>r.json()).then(j=>{
+        RV.frames=[...(j?.radar?.past||[]), ...(j?.radar?.nowcast||[])];
+        el.frame.max=Math.max(RV.frames.length-1,0);
+        setRadar(RV.frames.length-1);
+      }).catch(()=>{});
   }
   function setRadar(i){
     if(!RV.frames.length) return;
@@ -289,7 +308,7 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
   });
   el.btnPin.addEventListener('click', ()=>{ const c=map.getCenter(); setMarker(c.lat,c.lng,'Pinned point'); updateAll(c.lat,c.lng,'Pinned point'); });
 
-  /* ===== Weather (Open-Meteo) ===== */
+  /* ===== Weather (Open-Meteo primary) ===== */
   el.units.addEventListener('change', ()=>{ const c=map.getCenter(); updateAll(c.lat,c.lng,'Updated units'); });
 
   function updateAll(lat,lon,label){
@@ -351,15 +370,15 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
     });
   }
 
-  /* ===== Tomorrow.io via your Vercel proxy (no key in client) ===== */
-  // Reveal the switch only if the endpoint responds OK
+  /* ===== Tomorrow.io via Vercel proxy (no key in client) ===== */
+  // Show the switch only if the endpoint answers
   fetch('/api/tomorrow?lat=53.35&lon=-6.26',{cache:'no-store'})
     .then(r=>{ if(r.ok && el.tomorrowWrap) el.tomorrowWrap.style.display='inline-block'; })
     .catch(()=>{});
 
   function updateTomorrow(lat,lon){
     if (!el.useTomorrow || !el.useTomorrow.checked) return;
-    const metric = (el.units.value==='metric');
+    const metric=(el.units.value==='metric');
     const u = metric ? 'metric' : 'imperial';
     fetch(`/api/tomorrow?lat=${lat}&lon=${lon}&units=${u}`, { cache:'no-store' })
       .then(r=>r.json())
@@ -375,6 +394,20 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
   el.useTomorrow?.addEventListener('change', ()=>{ const c=map.getCenter(); updateAll(c.lat,c.lng,'Updated wind source'); });
 
   /* ===== GPS (Speedome) ===== */
+  function updateSpeedUI(heading){
+    el.gps.textContent = '⏱ '+fmtSpeed(lastSpeedMs);
+    const val = speedUnit==='kmh'? lastSpeedMs*3.6 : speedUnit==='mph'? lastSpeedMs*2.23694 : lastSpeedMs*1.94384;
+    const cap = speedUnit==='kmh'? 60 : speedUnit==='mph'? 40 : 30;
+    el.hudVal.textContent = Math.round(val);
+    el.hudUnits.textContent = (speedUnit==='kmh'?'km/h':speedUnit==='mph'?'mph':'knots');
+    el.hudFill.style.width = Math.min(100, Math.round(val/cap*100))+'%';
+    el.hudHead.textContent = '🧭 ' + (isFinite(heading)?Math.round(heading)+'°':'—°');
+    el.hudMax.textContent  = '🏁 Max ' + (speedUnit==='kmh'? Math.round(maxSpeed*3.6) : speedUnit==='mph'? Math.round(maxSpeed*2.23694) : Math.round(maxSpeed*1.94384));
+    el.toggleSpeed.textContent = 'Units: ' + (speedUnit==='kmh'?'km/h':speedUnit==='mph'?'mph':'knots');
+    el.max.textContent = '🏁 Max: ' + fmtSpeed(maxSpeed);
+    el.heading.textContent = '🧭 ' + (isFinite(heading)?Math.round(heading)+'°':'—°');
+  }
+
   function startGPS(){
     if(!navigator.geolocation){ el.gps.textContent='⏱ GPS not supported'; return; }
     if (gpsWatchId!==null) return;
@@ -382,28 +415,31 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
       const {latitude:lat, longitude:lon, speed, heading}=pos.coords;
       lastSpeedMs = speed==null?0:speed;
       if (lastSpeedMs>maxSpeed) maxSpeed=lastSpeedMs;
-      el.heading.textContent = '🧭 ' + (isFinite(heading)?Math.round(heading)+'°':'—°');
-      el.max.textContent = '🏁 Max: ' + fmtSpeed(maxSpeed);
       updateSpeedUI(heading);
       el.badge.textContent = `${lat.toFixed(3)}, ${lon.toFixed(3)} • ${fmtSpeed(lastSpeedMs)}`;
       if (!gotFix){ gotFix=true; map.setView([lat,lon],11); setMarker(lat,lon,'You are here'); updateAll(lat,lon,'My location'); }
     }, ()=>{ el.gps.textContent='⏱ GPS unavailable'; }, { enableHighAccuracy:true, maximumAge:4000, timeout:20000 });
   }
 
+  // Unit cycle + HUD toggles
   el.toggleSpeed.addEventListener('click', ()=>{ speedUnit = (speedUnit==='kmh')?'mph':(speedUnit==='mph')?'knots':'kmh'; updateSpeedUI(NaN); });
-  el.speedoBtn.addEventListener('click', ()=>{ el.speedHUD.style.display='flex'; });
-  el.closeSpeed.addEventListener('click', ()=>{ el.speedHUD.style.display='none'; });
-  el.hudToggle.addEventListener('click', ()=>{ el.toggleSpeed.click(); });
+  el.speedoBtn.addEventListener('click', ()=> toggleHUD());
+  el.speedFab.addEventListener('click', ()=> toggleHUD());
+  el.toggleHUD.addEventListener('click', ()=> toggleHUD());
+  el.closeSpeed.addEventListener('click', ()=> toggleHUD(false));
+  el.hudToggle.addEventListener('click', ()=> el.toggleSpeed.click());
 
   /* ===== INIT ===== */
   loadRadar(); setInterval(loadRadar, 5*60*1000);
   startGPS();
+
   if (navigator.geolocation){
     navigator.geolocation.getCurrentPosition(
       p=>{ const {latitude:lat,longitude:lon}=p.coords; map.setView([lat,lon],11); updateAll(lat,lon,'My location'); },
       ()=>updateAll(53.35,-6.26,'Dublin area')
     );
   } else updateAll(53.35,-6.26,'Dublin area');
+
 })();
 </script>
 </body>
