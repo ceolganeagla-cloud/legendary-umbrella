@@ -102,6 +102,24 @@ input[type=range]{width:180px}
     </div>
 
     <div class="card">
+  <div class="row" style="margin-bottom:6px">
+    <div class="sub">Waterways info (OSM)</div>
+  </div>
+  <div class="row" style="gap:12px">
+    <label><input type="checkbox" id="wwToggle"> Show waterways POIs</label>
+    <select id="wwFilter" class="btn ghost">
+      <option value="all" selected>All</option>
+      <option value="locks">Locks/Weirs/Dams</option>
+      <option value="slipways">Slipways</option>
+      <option value="marinas">Marinas/Moorings</option>
+      <option value="piers">Piers/Jetties</option>
+      <option value="fuel">Boat Fuel</option>
+    </select>
+    <span id="wwStatus" class="sub">—</span>
+  </div>
+</div>
+
+    <div class="card">
       <div class="row">
         <button id="play" class="btn ghost" type="button" title="Play radar">▶︎</button>
         <input id="frame" type="range" min="0" max="0" step="1" value="0">
