@@ -194,7 +194,9 @@ input[type=range]{width:180px}
    If hosted elsewhere (e.g., GitHub Pages), set it to your Vercel URL:
    const API_BASE = 'https://your-app.vercel.app';
 */
-const API_BASE = '';
+// near the top of index.html (exactly once)
+const API_BASE = 'https://<your-project>.vercel.app';
+
 
 /* Error banner */
 window.onerror = function(msg){ const e=document.getElementById('err'); e.textContent='Error: '+msg; e.style.display='block'; };
