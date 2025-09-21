@@ -1,23 +1,25 @@
-let cache = { data: null, timestamp: 0 };
-
 export default async function handler(req, res) {
-  const apiKey = process.env.TOMORROW_API_KEY;
-  const { lat = "53.34", lon = "-6.26" } = req.query;
-
-  const now = Date.now();
-  if (cache.data && now - cache.timestamp < 5 * 60 * 1000) {
-    return res.status(200).json(cache.data);
-  }
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
-    const resp = await fetch(
-      `https://api.tomorrow.io/v4/weather/forecast?location=${lat},${lon}&apikey=${apiKey}`
-    );
-    const data = await resp.json();
+    const { lat, lon, units = "metric" } = req.query || {};
+    if (!lat || !lon) return res.status(400).json({ error: "lat & lon required" });
 
-    cache = { data, timestamp: now };
-    res.status(200).json(data);
+    const key = process.env.TOMORROW_API_KEY;
+    if (!key) return res.status(500).json({ error: "Missing TOMORROW_API_KEY" });
+
+    const url = new URL("https://api.tomorrow.io/v4/weather/realtime");
+    url.searchParams.set("location", `${lat},${lon}`);
+    url.searchParams.set("units", units);
+    url.searchParams.set("apikey", key);
+
+    const r = await fetch(url.toString(), { cache: "no-store" });
+    const data = await r.json();
+    return res.status(r.ok ? 200 : r.status).json(data);
   } catch (err) {
-    res.status(500).json({ error: "Failed to fetch Tomorrow.io data" });
+    return res.status(500).json({ error: "proxy_failed", detail: String(err) });
   }
 }
