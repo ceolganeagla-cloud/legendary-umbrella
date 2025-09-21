@@ -1,149 +1,13 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Ceol Gan Eagla — Weather & Marine</title>
-
-<!-- Icons -->
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
-
-<!-- Leaflet -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-
-<style>
-:root { --bg:#0b1220; --panel:#12141c; --card:#1a1e29; --text:#eaeaea; --muted:#b9b9c2; }
-*{ box-sizing:border-box }
-html,body{ margin:0; height:100%; background:var(--bg); color:var(--text); font:14px/1.35 system-ui,Segoe UI,Roboto,Arial; }
-.app{ display:grid; grid-template-columns:1fr 430px; gap:12px; height:100vh; padding:12px; }
-#map{ width:100%; height:100%; border-radius:14px; overflow:hidden; position:relative; }
-aside{ background:var(--panel); border-radius:14px; overflow:auto; padding:12px; }
-
-.brand{ display:flex; gap:12px; align-items:center; margin-bottom:10px; }
-.logo{ width:48px; height:48px; border-radius:10px; overflow:hidden; background:#000; }
-.logo img{ width:100%; height:100%; object-fit:contain; background:#fff; }
-h1{ margin:0; font-size:18px; }
-.sub{ color:var(--muted); font-size:12px; }
-
-.card{ background:var(--card); border-radius:10px; padding:12px; margin-bottom:10px; }
-.row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-.btn{ border:0; padding:8px 10px; border-radius:10px; background:#fff; color:#111; font-weight:700; cursor:pointer; }
-.btn.ghost{ background:transparent; color:#fff; border:1px solid rgba(255,255,255,.2); }
-input[type=text],select{ background:#0f131c; color:#fff; border:1px solid rgba(255,255,255,.2); border-radius:10px; padding:8px 10px; }
-input[type=range]{ width:180px; }
-.chip{ padding:6px 8px; border-radius:10px; background:rgba(255,255,255,.08); font-size:12px; }
-
-#hourly{ display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; }
-.hour{ min-width:92px; background:rgba(255,255,255,.06); border-radius:10px; padding:8px; text-align:center; }
-#daily{ display:grid; grid-template-columns:repeat(7,minmax(90px,1fr)); gap:8px; }
-.day{ background:rgba(255,255,255,.06); border-radius:10px; padding:8px; text-align:center; }
-
-/* Map badge sits right of zoom so it never overlaps */
-.map-badge{ position:absolute; left:58px; top:10px; background:rgba(18,18,22,.9); color:#fff;
-  border:1px solid rgba(255,255,255,.2); padding:6px 8px; border-radius:8px; font-size:12px; z-index:450; pointer-events:none; }
-/* move zoom down a bit for breathing room */
-.leaflet-top.leaflet-left .leaflet-control-zoom{ margin-top:10px; margin-left:10px; }
-
-@media (max-width:920px){
-  .app{ grid-template-columns:1fr; grid-template-rows:52vh 1fr; }
-}
-</style>
-</head>
-<body>
-<div class="app">
-  <div id="map"><div id="badge" class="map-badge">Locating…</div></div>
-
-  <aside>
-    <div class="brand">
-      <div class="logo"><img src="logo.png" alt="Logo" onerror="this.onerror=null;this.src='icon-192.png'"></div>
-      <div>
-        <h1>Ceol Gan Eagla — Weather & Marine</h1>
-        <div class="sub">Sources: OSM • MapTiler • RainViewer • Open-Meteo • Nominatim • (optional) Tomorrow.io</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="row" style="margin-bottom:8px">
-        <input id="search" type="text" placeholder="Search place or Eircode…" style="flex:1;min-width:220px">
-        <button id="btnSearch" class="btn" type="button">🔍 Search</button>
-      </div>
-      <div class="row">
-        <button id="btnGeo" class="btn" type="button">📍 Me</button>
-        <button id="btnPin" class="btn ghost" type="button">📌 Pin</button>
-        <label>Units
-          <select id="units" class="btn ghost">
-            <option value="metric" selected>Metric (°C, m/s, mm)</option>
-            <option value="imperial">Imperial (°F, mph, in)</option>
-          </select>
-        </label>
-        <label>Map
-          <select id="mapStyle" class="btn ghost">
-            <option value="streets" selected>Streets</option>
-            <option value="satellite">Satellite</option>
-            <option value="outdoor">Outdoor</option>
-          </select>
-        </label>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="row">
-        <button id="play" class="btn ghost" type="button" title="Play radar">▶︎</button>
-        <input id="frame" type="range" min="0" max="0" step="1" value="0">
-        <span id="frametime" class="sub">—</span>
-        <label style="margin-left:auto">Radar opacity
-          <input id="opacity" type="range" min="0" max="1" step="0.05" value="0.7">
-        </label>
-        <button id="refresh" class="btn ghost" type="button">↻ Refresh</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="row">
-        <div id="nowIcon" class="chip">☁</div>
-        <div id="temp" class="chip">Temp —</div>
-        <div id="wind" class="chip">Wind —</div>
-        <div id="precip" class="chip">Precip —</div>
-        <div id="cloud" class="chip">Cloud —</div>
-        <div id="sun" class="chip">Sunrise — / Sunset —</div>
-        <div id="risk" class="chip">—</div>
-        <div id="updated" class="chip">—</div>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <label id="tomorrowWrap" style="display:none">
-          <input type="checkbox" id="useTomorrow" checked> Use Tomorrow.io wind (if API key set)
-        </label>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="sub" style="margin-bottom:6px">Your GPS (boat) speed</div>
-      <div class="row">
-        <div id="gps" class="chip">⏱ 0 km/h</div>
-        <button id="toggleSpeed" class="btn ghost" type="button">Units: km/h</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="sub" style="margin-bottom:6px">Next 24 hours</div>
-      <div id="hourly">Loading…</div>
-    </div>
-    <div class="card">
-      <div class="sub" style="margin-bottom:6px">7-day forecast</div>
-      <div id="daily">Loading…</div>
-    </div>
-  </aside>
-</div>
-
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-(function(){
-  /* ========= CONFIG ========= */
-  const MAPTILER_KEY = 'MpDV384cXMNO273WsuTG';  // your MapTiler key
-  let   TOMORROW_API_KEY = '';                   // fetched from /api/tio-key at runtime
+/* Show a banner if any JS error bubbles up */
+window.onerror = function(msg){ const e=document.getElementById('err'); if(e){e.textContent='Error: '+msg; e.style.display='block';} };
 
-  /* ========= EL ========= */
+(function(){
+  /* ===== CONFIG ===== */
+  const MAPTILER_KEY = 'MpDV384cXMNO273WsuTG'; // MapTiler is client-side (lock key to your domain in MapTiler dashboard)
+
+  /* ===== EL ===== */
   const $ = id => document.getElementById(id);
   const el = {
     badge: $('badge'),
@@ -156,92 +20,90 @@ input[type=range]{ width:180px; }
     cloud: $('cloud'), sun: $('sun'), risk: $('risk'), updated: $('updated'),
     hourly: $('hourly'), daily: $('daily'),
     gps: $('gps'), toggleSpeed: $('toggleSpeed'),
-    tomorrowWrap: $('tomorrowWrap'), useTomorrow: $('useTomorrow')
+    tomorrowWrap: $('tomorrowWrap'), useTomorrow: $('useTomorrow'),
+    speedoBtn: $('speedoBtn'), speedHUD: $('speedHUD'),
+    closeSpeed: $('closeSpeed'), hudVal: $('hudVal'), hudUnits: $('hudUnits'),
+    hudFill: $('hudFill'), hudHead: $('hudHead'), hudMax: $('hudMax'), hudToggle: $('hudToggle'),
+    err: $('err')
   };
 
-  /* ========= MAP ========= */
-  const map = L.map('map', { zoomControl:true }).setView([53.35,-6.26], 7);
+  /* ===== MAP ===== */
+  const map = L.map('map', { zoomControl:true }).setView([53.35,-6.26], 8);
   const styles = {
     streets:   `https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`,
-    satellite: `https://api.maptiler.com/maps/satellite/{z}/{x}/{y}.jpg?key=${MAPTILER_KEY}`,
-    outdoor:   `https://api.maptiler.com/maps/outdoor-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`
+    outdoor:   `https://api.maptiler.com/maps/outdoor-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`,
+    satellite: `https://api.maptiler.com/maps/satellite/{z}/{x}/{y}.jpg?key=${MAPTILER_KEY}`
   };
-  let base = L.tileLayer(styles.streets, {
-    attribution: '&copy; OpenStreetMap • &copy; MapTiler'
-  }).addTo(map);
-
-  const markers = L.featureGroup().addTo(map); // keep 1 marker
-  const setMarker = (lat,lon,label='Here')=>{
-    markers.clearLayers();
-    L.marker([lat,lon]).addTo(markers).bindPopup(label).openPopup();
-  };
-
-  // Radar on a pane above tiles
+  let base = L.tileLayer(styles.streets, { attribution: '&copy; OpenStreetMap • &copy; MapTiler' }).addTo(map);
+  const markers = L.featureGroup().addTo(map);
   map.createPane('radar'); map.getPane('radar').style.zIndex = 450;
-  const radarLayer = L.tileLayer('', { pane: 'radar', opacity: 0.7 }).addTo(map);
+  const radarLayer = L.tileLayer('', { pane:'radar', opacity:0.7 }).addTo(map);
 
-  /* ========= HELPERS ========= */
-  const toF = c => Math.round(c*9/5+32);
-  const msToMph = ms => Math.round(ms*2.23694);
-  const mmToIn = mm => Math.round(mm/25.4*100)/100;
-  const msToKn = ms => Math.round(ms*1.94384);
-  const iconFor = ()=>'☁'; // simple placeholder
-
-  // GPS speed units
-  let speedUnit = 'kmh';
-  let lastSpeedMs = 0, gpsWatchId=null, gotInitialFix=false, radarTimer=null;
-  const fmtSpeed = ms => {
-    ms = (ms==null || isNaN(ms)) ? 0 : ms;
-    if (speedUnit==='kmh') return Math.round(ms*3.6)+' km/h';
-    if (speedUnit==='mph') return Math.round(ms*2.23694)+' mph';
-    return msToKn(ms)+' knots';
+  /* ===== HELPERS ===== */
+  let speedUnit='kmh', lastSpeedMs=0, maxSpeed=0, gpsWatchId=null, gotFix=false, radarTimer=null;
+  const toF=c=>Math.round(c*9/5+32);
+  const msToMph=ms=>Math.round(ms*2.23694);
+  const msToKn =ms=>Math.round(ms*1.94384);
+  const mmToIn=mm=>Math.round(mm/25.4*100)/100;
+  const iconFor=()=> '☁';
+  const fmtSpeed = ms=>{
+    if(ms==null||isNaN(ms)) ms=0;
+    if(speedUnit==='kmh') return Math.round(ms*3.6)+' km/h';
+    if(speedUnit==='mph') return Math.round(ms*2.23694)+' mph';
+    return Math.round(ms*1.94384)+' knots';
   };
-  const updateGPSUI = ()=>{
-    el.gps.textContent = '⏱ ' + fmtSpeed(lastSpeedMs);
+  function updateSpeedUI(heading){
+    el.gps.textContent = '⏱ '+fmtSpeed(lastSpeedMs);
     el.toggleSpeed.textContent = 'Units: ' + (speedUnit==='kmh'?'km/h':speedUnit==='mph'?'mph':'knots');
-  };
+    // HUD
+    const val = speedUnit==='kmh'? lastSpeedMs*3.6 : speedUnit==='mph'? lastSpeedMs*2.23694 : lastSpeedMs*1.94384;
+    const cap = speedUnit==='kmh'? 60 : speedUnit==='mph'? 40 : 30;
+    if (el.hudVal){ el.hudVal.textContent = Math.round(val); }
+    if (el.hudUnits){ el.hudUnits.textContent = (speedUnit==='kmh'?'km/h':speedUnit==='mph'?'mph':'knots'); }
+    if (el.hudFill){ el.hudFill.style.width = Math.min(100, Math.round(val/cap*100))+'%'; }
+  }
+  function setMarker(lat,lon,label){
+    markers.clearLayers();
+    L.marker([lat,lon]).addTo(markers).bindPopup(label||'Here').openPopup();
+  }
 
-  /* ========= MAP STYLE SWITCH ========= */
+  /* Map style switch */
   el.mapStyle.addEventListener('change', e=>{
     const v=e.target.value;
     if (base) map.removeLayer(base);
     base = L.tileLayer(styles[v], { attribution: '&copy; OpenStreetMap • &copy; MapTiler' }).addTo(map);
   });
 
-  /* ========= RADAR (RainViewer) ========= */
+  /* ===== Radar (RainViewer) ===== */
   const RV={frames:[],idx:0};
   function loadRadar(){
     fetch('https://api.rainviewer.com/public/weather-maps.json',{cache:'no-store'})
-      .then(r=>r.json())
-      .then(j=>{
-        const past=(j?.radar?.past)||[];
-        const nowc=(j?.radar?.nowcast)||[];
-        RV.frames = past.concat(nowc);
-        el.frame.max = Math.max(RV.frames.length-1,0);
+      .then(r=>r.json()).then(j=>{
+        RV.frames=[...(j?.radar?.past||[]), ...(j?.radar?.nowcast||[])];
+        el.frame.max=Math.max(RV.frames.length-1,0);
         setRadar(RV.frames.length-1);
       }).catch(()=>{});
   }
   function setRadar(i){
     if(!RV.frames.length) return;
-    RV.idx = Math.max(0,Math.min(i,RV.frames.length-1));
-    const fr = RV.frames[RV.idx]; if(!fr) return;
-    const url = `https://tilecache.rainviewer.com/v2/radar/${fr.time}/256/{z}/{x}/{y}/2/1_1.png`;
-    radarLayer.setUrl(url);
-    el.frametime.textContent = new Date(fr.time*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    RV.idx=Math.max(0,Math.min(i,RV.frames.length-1));
+    const fr=RV.frames[RV.idx]; if(!fr) return;
+    radarLayer.setUrl(`https://tilecache.rainviewer.com/v2/radar/${fr.time}/256/{z}/{x}/{y}/2/1_1.png`);
+    el.frametime.textContent=new Date(fr.time*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
   }
   el.frame.addEventListener('input', e=>setRadar(+e.target.value));
   el.play.addEventListener('click', ()=>{
     if (radarTimer){ clearInterval(radarTimer); radarTimer=null; el.play.textContent='▶︎'; return; }
     if (!RV.frames.length) return;
     el.play.textContent='⏸';
-    radarTimer=setInterval(()=>{
-      const n=(RV.idx+1)%RV.frames.length; el.frame.value=n; setRadar(n);
-    }, 700);
+    radarTimer=setInterval(()=>{ const n=(RV.idx+1)%RV.frames.length; el.frame.value=n; setRadar(n); },700);
   });
   el.opacity.addEventListener('input', e=>radarLayer.setOpacity(+e.target.value));
   el.refresh.addEventListener('click', loadRadar);
 
-  /* ========= SEARCH / GEO ========= */
+  /* ===== Search / Geo ===== */
+  el.btnSearch.addEventListener('click', doSearch);
+  el.search.addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
   function doSearch(){
     const q=el.search.value.trim(); if(!q) return;
     const eir=/^[A-Z0-9]{3}\s?[A-Z0-9]{4}$/i;
@@ -249,15 +111,12 @@ input[type=range]{ width:180px; }
       ? `https://nominatim.openstreetmap.org/search?postalcode=${q.replace(/\s+/g,'')}&countrycodes=ie&format=json&addressdetails=1&limit=5`
       : `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`;
     fetch(url,{headers:{'Accept-Language':'en'}})
-      .then(r=>r.json())
-      .then(arr=>{
-        if(!arr?.length) return;
+      .then(r=>r.json()).then(arr=>{
+        if(!arr||!arr.length) return;
         const lat=parseFloat(arr[0].lat), lon=parseFloat(arr[0].lon), name=arr[0].display_name||'Location';
         map.setView([lat,lon],11); setMarker(lat,lon,name); updateAll(lat,lon,name);
       }).catch(()=>{});
   }
-  el.btnSearch.addEventListener('click', doSearch);
-  el.search.addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
   el.btnGeo.addEventListener('click', ()=>{
     if(!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(pos=>{
@@ -269,149 +128,126 @@ input[type=range]{ width:180px; }
     const c=map.getCenter(); setMarker(c.lat,c.lng,'Pinned point'); updateAll(c.lat,c.lng,'Pinned point');
   });
 
-  /* ========= WEATHER (Open-Meteo) ========= */
-  el.units.addEventListener('change', ()=>{
-    const c=map.getCenter(); updateAll(c.lat,c.lng,'Updated units');
-  });
+  /* ===== Weather (Open-Meteo) ===== */
+  el.units.addEventListener('change', ()=>{ const c=map.getCenter(); updateAll(c.lat,c.lng,'Updated units'); });
 
   function updateAll(lat,lon,label){
-    el.badge.textContent=(label||'Here')+' • '+lat.toFixed(3)+', '+lon.toFixed(3);
+    el.badge.textContent=`${label||'Here'} • ${lat.toFixed(3)}, ${lon.toFixed(3)}`;
     updateForecast(lat,lon).then(()=>{
-      if (TOMORROW_API_KEY && el.useTomorrow?.checked){
-        updateTomorrow(lat,lon);
-      }
+      if (el.useTomorrow?.checked) updateTomorrow(lat,lon);
     });
   }
 
   function updateForecast(lat,lon){
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
-      + `&current_weather=true`
-      + `&hourly=temperature_2m,precipitation,cloudcover,windspeed_10m,weathercode,snowfall`
-      + `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,sunrise,sunset`
-      + `&forecast_days=7&timezone=auto`;
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+      +`&current_weather=true`
+      +`&hourly=temperature_2m,precipitation,cloudcover,windspeed_10m,weathercode,snowfall`
+      +`&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,sunrise,sunset`
+      +`&forecast_days=7&timezone=auto`;
+    return fetch(url,{cache:'no-store'})
+      .then(r=>r.json()).then(j=>{
+        const metric=(el.units.value==='metric');
+        const tNow=j?.current_weather?.temperature;
+        const wArr=j?.hourly?.windspeed_10m||[], pArr=j?.hourly?.precipitation||[], cArr=j?.hourly?.cloudcover||[], sArr=j?.hourly?.snowfall||[];
+        const sunrise=j?.daily?.sunrise?.[0], sunset=j?.daily?.sunset?.[0];
+        const wMs=wArr[0], pMm=pArr[0], cl=cArr[0], snow=sArr[0];
 
-    return fetch(url,{cache:'no-store'}).then(r=>r.json()).then(j=>{
-      const metric=(el.units.value==='metric');
+        el.nowIcon.textContent=iconFor();
+        el.temp.textContent=(tNow==null)?'Temp —':(metric?Math.round(tNow)+'°C':toF(tNow)+'°F');
+        el.wind.dataset.source='openmeteo';
+        el.wind.textContent=(wMs==null)?'Wind —':(metric?'Wind '+Math.round(wMs)+' m/s':'Wind '+msToMph(wMs)+' mph');
+        el.precip.textContent=(pMm==null)?'Precip —':(metric?'Precip '+pMm+' mm':'Precip '+mmToIn(pMm)+' in');
+        el.cloud.textContent=(cl==null)?'Cloud —':'Cloud '+cl+'%';
+        el.sun.textContent=(sunrise&&sunset)?`Sunrise ${new Date(sunrise).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} / Sunset ${new Date(sunset).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`:'Sunrise — / Sunset —';
+        el.risk.textContent=(snow>0?'❄ snow':'') + ((cl<=0 && pMm>0)?' • 🌧 rain':'') + (snow>0?' • 🧊 ice risk':'');
+        el.updated.textContent='Updated '+new Date().toLocaleTimeString();
 
-      const tNow = j?.current_weather?.temperature ?? null;
-      const wArr = j?.hourly?.windspeed_10m ?? [];
-      const pArr = j?.hourly?.precipitation ?? [];
-      const cArr = j?.hourly?.cloudcover ?? [];
-      const sArr = j?.hourly?.snowfall ?? [];
-      const sunrise = j?.daily?.sunrise?.[0] ?? null;
-      const sunset  = j?.daily?.sunset?.[0]  ?? null;
-
-      const wMs = wArr[0] ?? null;
-      const pMm = pArr[0] ?? null;
-      const cl  = cArr[0] ?? null;
-      const snow= sArr[0] ?? null;
-
-      el.nowIcon.textContent = iconFor();
-      el.temp.textContent    = (tNow==null)?'Temp —' : (metric ? Math.round(tNow)+'°C' : toF(tNow)+'°F');
-      el.wind.dataset.source = 'openmeteo';
-      el.wind.textContent    = (wMs==null) ? 'Wind —' : (metric ? 'Wind '+Math.round(wMs)+' m/s' : 'Wind '+msToMph(wMs)+' mph');
-      el.precip.textContent  = (pMm==null) ? 'Precip —' : (metric ? 'Precip '+pMm+' mm' : 'Precip '+mmToIn(pMm)+' in');
-      el.cloud.textContent   = (cl==null)  ? 'Cloud —'  : ('Cloud '+cl+'%');
-      el.sun.textContent     = (sunrise && sunset)
-        ? 'Sunrise '+new Date(sunrise).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+' / Sunset '+new Date(sunset).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
-        : 'Sunrise — / Sunset —';
-      el.risk.textContent    = (snow>0?'❄ snow':'') + ((cl<=0 && pMm>0)?' • 🌧 rain':'') + (snow>0?' • 🧊 ice risk':'');
-      el.updated.textContent = 'Updated '+new Date().toLocaleTimeString();
-
-      // HOURLY
-      el.hourly.innerHTML='';
-      const H = Math.min(24, j?.hourly?.time?.length || 0);
-      for (let i=0;i<H;i++){
-        const ti = j.hourly.time[i].slice(11,16);
-        const tc = j.hourly.temperature_2m[i];
-        const pp = j.hourly.precipitation[i];
-        const div=document.createElement('div');
-        div.className='hour';
-        div.innerHTML = `${ti}<div class="ico">☁</div>${metric?Math.round(tc)+'°C':toF(tc)+'°F'}<br>${metric?pp+' mm':mmToIn(pp)+' in'}`;
-        el.hourly.appendChild(div);
-      }
-
-      // DAILY
-      el.daily.innerHTML='';
-      const D = j?.daily?.time?.length || 0;
-      for (let d=0; d<D; d++){
-        const wd = new Date(j.daily.time[d]).toLocaleDateString(undefined,{weekday:'short'});
-        const tmax=j.daily.temperature_2m_max[d], tmin=j.daily.temperature_2m_min[d];
-        const pr=(j.daily.precipitation_sum?.[d] ?? 0);
-        const row=document.createElement('div');
-        row.className='day';
-        row.innerHTML = `${wd}<div class="ico">☁</div>${metric?Math.round(tmax)+'°C / '+Math.round(tmin)+'°C':toF(tmax)+'°F / '+toF(tmin)+'°F'}<br>${metric?pr+' mm':mmToIn(pr)+' in'}`;
-        el.daily.appendChild(row);
-      }
-    }).catch(()=>{ el.updated.textContent='Live forecast failed'; });
+        // Hourly 24
+        el.hourly.innerHTML='';
+        const H=Math.min(24,(j?.hourly?.time||[]).length);
+        for(let i=0;i<H;i++){
+          const ti=j.hourly.time[i].slice(11,16);
+          const tc=j.hourly.temperature_2m[i];
+          const pp=j.hourly.precipitation[i];
+          const div=document.createElement('div');
+          div.className='hour';
+          div.innerHTML=ti+'<div class="ico">☁</div>'
+            +(metric?Math.round(tc)+'°C':toF(tc)+'°F')+'<br>'
+            +(metric?pp+' mm':mmToIn(pp)+' in');
+          el.hourly.appendChild(div);
+        }
+        // Daily 7
+        el.daily.innerHTML='';
+        const D=(j?.daily?.time||[]).length;
+        for(let d=0; d<D; d++){
+          const wd=new Date(j.daily.time[d]).toLocaleDateString(undefined,{weekday:'short'});
+          const tmax=j.daily.temperature_2m_max[d], tmin=j.daily.temperature_2m_min[d];
+          const pr=j.daily.precipitation_sum?.[d]??0;
+          const row=document.createElement('div');
+          row.className='day';
+          row.innerHTML=wd+'<div class="ico">☁</div>'
+            +(metric?Math.round(tmax)+'°C / '+Math.round(tmin)+'°C':toF(tmax)+'°F / '+toF(tmin)+'°F')+'<br>'
+            +(metric?pr+' mm':mmToIn(pr)+' in');
+          el.daily.appendChild(row);
+        }
+      });
   }
 
-  /* ========= OPTIONAL: Tomorrow.io realtime wind ========= */
-  async function getTomorrowKey(){
-    try {
-      const res = await fetch('api/tio-key', {cache:'no-store'});
-      if (!res.ok) return '';
-      const txt = await res.text();
-      try { return (JSON.parse(txt).key || '').trim(); }
-      catch { return txt.trim(); }
-    } catch { return ''; }
-  }
-  async function maybeLoadTomorrowUI(){
-    TOMORROW_API_KEY = await getTomorrowKey();
-    if (TOMORROW_API_KEY) el.tomorrowWrap.style.display='inline-block';
-  }
+  /* ===== Use your Vercel proxy (Tomorrow.io hidden server-side) ===== */
+  // If the endpoint exists and returns 200, reveal the switch
+  fetch('/api/tomorrow?lat=53.35&lon=-6.26',{cache:'no-store'})
+    .then(r=>{ if(r.ok && el.tomorrowWrap) el.tomorrowWrap.style.display='inline-block'; })
+    .catch(()=>{ /* ignore */ });
+
   function updateTomorrow(lat,lon){
-    const url = `https://api.tomorrow.io/v4/weather/realtime?location=${lat},${lon}&units=metric&apikey=${encodeURIComponent(TOMORROW_API_KEY)}`;
-    fetch(url,{cache:'no-store'})
+    // If the toggle is off, skip
+    if (!el.useTomorrow || !el.useTomorrow.checked) return;
+    const metric = (el.units.value==='metric');
+    const u = metric ? 'metric' : 'imperial';
+    fetch(`/api/tomorrow?lat=${lat}&lon=${lon}&units=${u}`, { cache:'no-store' })
       .then(r=>r.json())
       .then(j=>{
-        const ws = j?.data?.values?.windSpeed ?? null; // m/s
+        const ws = j?.data?.values?.windSpeed; // Tomorrow returns m/s in metric
         if (ws==null) return;
-        const metric=(el.units.value==='metric');
-        if (el.useTomorrow?.checked){
-          el.wind.dataset.source='tomorrow';
-          el.wind.textContent = metric ? (`Wind ${Math.round(ws)} m/s (Tomorrow.io)`)
-                                       : (`Wind ${msToMph(ws)} mph (Tomorrow.io)`);
-        }
-      }).catch(()=>{});
+        el.wind.dataset.source='tomorrow';
+        el.wind.textContent = metric ? (`Wind ${Math.round(ws)} m/s (Tomorrow.io)`)
+                                     : (`Wind ${Math.round(ws*2.23694)} mph (Tomorrow.io)`);
+      })
+      .catch(()=>{ /* silent */ });
   }
   el.useTomorrow?.addEventListener('change', ()=>{
     const c=map.getCenter(); updateAll(c.lat,c.lng,'Updated wind source');
   });
 
-  /* ========= GPS (speed + units toggle) ========= */
+  /* ===== GPS (speed + HUD) ===== */
   function startGPS(){
     if(!navigator.geolocation){ el.gps.textContent='⏱ GPS not supported'; return; }
     if (gpsWatchId!==null) return;
     gpsWatchId = navigator.geolocation.watchPosition(pos=>{
-      const {latitude:lat, longitude:lon, speed} = pos.coords;
-      lastSpeedMs = (speed==null)?0:speed;
-      updateGPSUI();
+      const {latitude:lat, longitude:lon, speed, heading}=pos.coords;
+      lastSpeedMs = speed==null?0:speed;
+      if (lastSpeedMs>maxSpeed) maxSpeed=lastSpeedMs;
+      updateSpeedUI(heading);
       el.badge.textContent = `${lat.toFixed(3)}, ${lon.toFixed(3)} • ${fmtSpeed(lastSpeedMs)}`;
-      if (!gotInitialFix){ gotInitialFix=true; map.setView([lat,lon],11); setMarker(lat,lon,'You are here'); updateAll(lat,lon,'My location'); }
-    }, ()=>{ el.gps.textContent='⏱ GPS unavailable'; }, { enableHighAccuracy:true, maximumAge:5000, timeout:20000 });
+      if (!gotFix){ gotFix=true; map.setView([lat,lon],11); setMarker(lat,lon,'You are here'); updateAll(lat,lon,'My location'); }
+    }, ()=>{ el.gps.textContent='⏱ GPS unavailable'; }, { enableHighAccuracy:true, maximumAge:4000, timeout:20000 });
   }
-  el.toggleSpeed.addEventListener('click', ()=>{
-    speedUnit = (speedUnit==='kmh') ? 'mph' : (speedUnit==='mph' ? 'knots' : 'kmh');
-    updateGPSUI();
-  });
+  el.toggleSpeed.addEventListener('click', ()=>{ speedUnit = (speedUnit==='kmh')?'mph':(speedUnit==='mph')?'knots':'kmh'; updateSpeedUI(NaN); });
 
-  /* ========= INIT ========= */
-  loadRadar();
-  setInterval(loadRadar, 5*60*1000);
+  // Optional HUD controls (if you kept the HUD markup)
+  el.speedoBtn?.addEventListener('click', ()=>{ el.speedHUD.style.display='flex'; });
+  el.closeSpeed?.addEventListener('click', ()=>{ el.speedHUD.style.display='none'; });
+  el.hudToggle?.addEventListener('click', ()=>{ el.toggleSpeed.click(); });
+
+  /* ===== INIT ===== */
+  loadRadar(); setInterval(loadRadar, 5*60*1000);
   startGPS();
-  maybeLoadTomorrowUI();
 
-  // First load: try user location, fallback to Dublin
-  if (navigator.geolocation) {
+  if (navigator.geolocation){
     navigator.geolocation.getCurrentPosition(
-      pos=>{ const {latitude:lat,longitude:lon}=pos.coords; map.setView([lat,lon],11); updateAll(lat,lon,'My location'); },
-      ()=>{ updateAll(53.35,-6.26,'Dublin area'); }
+      p=>{ const {latitude:lat,longitude:lon}=p.coords; map.setView([lat,lon],11); updateAll(lat,lon,'My location'); },
+      ()=>updateAll(53.35,-6.26,'Dublin area')
     );
-  } else {
-    updateAll(53.35,-6.26,'Dublin area');
-  }
+  } else updateAll(53.35,-6.26,'Dublin area');
 })();
 </script>
-</body>
-</html>
