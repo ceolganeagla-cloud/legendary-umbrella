@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Ceol Gan Eagla — Weather & Marine</title>
 
+<!-- Icons / Logo -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -36,28 +37,27 @@ input[type=range]{width:180px}
 #daily{display:grid;grid-template-columns:repeat(7,minmax(90px,1fr));gap:8px}
 .day{background:rgba(255,255,255,.06);border-radius:10px;padding:8px;text-align:center}
 
-/* Map badge + floating Speedome button */
+/* Map UI */
 .map-badge{position:absolute;left:58px;top:10px;background:rgba(18,18,22,.9);color:#fff;border:1px solid rgba(255,255,255,.2);padding:6px 8px;border-radius:8px;font-size:12px;z-index:650;pointer-events:none}
 .leaflet-top.leaflet-left .leaflet-control-zoom{margin-top:10px;margin-left:10px}
 .fab{position:absolute;right:12px;bottom:12px;z-index:700;background:#fff;color:#111;border-radius:999px;padding:10px 12px;box-shadow:0 4px 12px rgba(0,0,0,.35);cursor:pointer;font-weight:800}
-.fab:active{transform:translateY(1px)}
 
 /* Speedome HUD */
 #speedHUD{position:fixed;left:0;right:0;bottom:0;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(10,15,24,.92);backdrop-filter:blur(3px);z-index:9000}
 .speedWrap{display:flex;flex-direction:column;align-items:center;gap:8px}
-.speedVal{font-size:64px;line-height:1;font-weight:900;letter-spacing:2px}
+.speedVal{font-size:64px;line-height:1;font-weight:900}
 .bar{height:6px;width:260px;border-radius:999px;background:#1f2a3a;overflow:hidden}
 .fill{height:100%;width:0;background:linear-gradient(90deg,#36f,#4dd0ff);transition:width .2s}
 .speedUnits{font-size:14px;color:var(--muted)}
-.speedMeta{display:flex;gap:12px;color:var(--muted);font-size:12px}
-#closeSpeed{position:absolute;right:12px;top:12px}
-.maxChip{background:#142133;border:1px solid #27425e;border-radius:999px;padding:4px 10px}
+.speedMeta{display:flex;gap:12px;color:#bbb;font-size:12px}
 
-/* Disabled toggle look */
+/* Toggles */
 .disabled{opacity:.5;pointer-events:none}
 
-@media (max-width:920px){.app{grid-template-columns:1fr;grid-template-rows:52vh 1fr}}
+/* Error banner */
 #err{position:fixed;left:8px;right:8px;bottom:8px;background:#b00020;color:#fff;border-radius:8px;padding:8px;display:none;z-index:9999}
+
+@media (max-width:920px){.app{grid-template-columns:1fr;grid-template-rows:52vh 1fr}}
 </style>
 </head>
 <body>
@@ -72,7 +72,7 @@ input[type=range]{width:180px}
       <div class="logo"><img src="logo.png" alt="Logo" onerror="this.onerror=null;this.src='icon-192.png'"></div>
       <div>
         <h1>Ceol Gan Eagla — Weather & Marine</h1>
-        <div class="sub">Sources: OSM • MapTiler • RainViewer • Open-Meteo • Nominatim • (Tomorrow.io via proxy)</div>
+        <div class="sub">Sources: OSM • MapTiler • RainViewer • Open-Meteo • Tomorrow.io (proxy)</div>
       </div>
     </div>
 
@@ -80,11 +80,10 @@ input[type=range]{width:180px}
       <div class="row" style="margin-bottom:8px">
         <input id="search" type="text" placeholder="Search place or Eircode…" style="flex:1;min-width:220px">
         <button id="btnSearch" class="btn" type="button">🔍 Search</button>
-        <button id="speedoBtn" class="btn ghost" type="button">⛵ Speedome</button>
-      </div>
-      <div class="row">
         <button id="btnGeo" class="btn" type="button">📍 Me</button>
         <button id="btnPin" class="btn ghost" type="button">📌 Pin</button>
+      </div>
+      <div class="row">
         <label>Units
           <select id="units" class="btn ghost">
             <option value="metric" selected>Metric (°C, m/s, mm)</option>
@@ -96,32 +95,16 @@ input[type=range]{width:180px}
             <option value="streets" selected>Streets</option>
             <option value="outdoor">Outdoor (terrain)</option>
             <option value="satellite">Satellite</option>
+            <option value="ocean">Ocean (bathymetry)</option>
           </select>
         </label>
+        <label><input type="checkbox" id="seamarksToggle"> Seamarks & depth</label>
       </div>
     </div>
 
     <div class="card">
-  <div class="row" style="margin-bottom:6px">
-    <div class="sub">Waterways info (OSM)</div>
-  </div>
-  <div class="row" style="gap:12px">
-    <label><input type="checkbox" id="wwToggle"> Show waterways POIs</label>
-    <select id="wwFilter" class="btn ghost">
-      <option value="all" selected>All</option>
-      <option value="locks">Locks/Weirs/Dams</option>
-      <option value="slipways">Slipways</option>
-      <option value="marinas">Marinas/Moorings</option>
-      <option value="piers">Piers/Jetties</option>
-      <option value="fuel">Boat Fuel</option>
-    </select>
-    <span id="wwStatus" class="sub">—</span>
-  </div>
-</div>
-
-    <div class="card">
       <div class="row">
-        <button id="play" class="btn ghost" type="button" title="Play radar">▶︎</button>
+        <button id="play" class="btn ghost" type="button">▶︎</button>
         <input id="frame" type="range" min="0" max="0" step="1" value="0">
         <span id="frametime" class="sub">—</span>
         <label style="margin-left:auto">Radar opacity
@@ -139,13 +122,30 @@ input[type=range]{width:180px}
         <div id="precip" class="chip">Precip —</div>
         <div id="cloud" class="chip">Cloud —</div>
         <div id="sun" class="chip">Sunrise — / Sunset —</div>
-        <div id="risk" class="chip">—</div>
         <div id="updated" class="chip">—</div>
       </div>
       <div class="row" style="margin-top:8px">
         <!-- Always visible; disabled if proxy unreachable -->
         <label id="tomorrowWrap"><input type="checkbox" id="useTomorrow" checked> Use Tomorrow.io wind</label>
         <span id="tioNote" class="sub" style="margin-left:6px;"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:6px">
+        <div class="sub">Waterways info (OSM)</div>
+      </div>
+      <div class="row" style="gap:12px">
+        <label><input type="checkbox" id="wwToggle"> Show waterways POIs</label>
+        <select id="wwFilter" class="btn ghost">
+          <option value="all" selected>All</option>
+          <option value="locks">Locks/Weirs/Dams</option>
+          <option value="slipways">Slipways</option>
+          <option value="marinas">Marinas/Moorings</option>
+          <option value="piers">Piers/Jetties</option>
+          <option value="fuel">Boat Fuel</option>
+        </select>
+        <span id="wwStatus" class="sub">—</span>
       </div>
     </div>
 
@@ -173,14 +173,13 @@ input[type=range]{width:180px}
 
 <!-- Speedome HUD -->
 <div id="speedHUD">
-  <button id="closeSpeed" class="btn">Close</button>
   <div class="speedWrap">
     <div class="speedVal" id="hudVal">0</div>
     <div class="bar"><div class="fill" id="hudFill"></div></div>
     <div class="speedUnits" id="hudUnits">km/h</div>
     <div class="speedMeta">
       <span id="hudHead">🧭 —°</span>
-      <span class="maxChip" id="hudMax">🏁 Max 0</span>
+      <span id="hudMax">🏁 Max 0</span>
       <button id="hudToggle" class="btn ghost" type="button">Toggle Units</button>
     </div>
   </div>
@@ -190,10 +189,10 @@ input[type=range]{width:180px}
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-/* CONFIG
+/* ================= CONFIG =================
    If this HTML is on the SAME Vercel domain as your API, leave API_BASE = ''.
-   If hosted elsewhere (e.g., GitHub Pages), set it to your Vercel URL.
-   Example: const API_BASE = 'https://your-app.vercel.app';
+   If hosted elsewhere (e.g., GitHub Pages), set it to your Vercel URL:
+   const API_BASE = 'https://your-app.vercel.app';
 */
 const API_BASE = '';
 
@@ -213,22 +212,23 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
     play:$('play'), frame:$('frame'), frametime:$('frametime'),
     opacity:$('opacity'), refresh:$('refresh'),
     nowIcon:$('nowIcon'), temp:$('temp'), wind:$('wind'), precip:$('precip'),
-    cloud:$('cloud'), sun:$('sun'), risk:$('risk'), updated:$('updated'),
+    cloud:$('cloud'), sun:$('sun'), updated:$('updated'),
     hourly:$('hourly'), daily:$('daily'),
     gps:$('gps'), toggleSpeed:$('toggleSpeed'), heading:$('heading'), max:$('max'),
-    speedoBtn:$('speedoBtn'), speedHUD:$('speedHUD'), closeSpeed:$('closeSpeed'),
-    hudVal:$('hudVal'), hudUnits:$('hudUnits'), hudFill:$('hudFill'),
-    hudHead:$('hudHead'), hudMax:$('hudMax'), hudToggle:$('hudToggle'),
+    speedHUD:$('speedHUD'), hudVal:$('hudVal'), hudUnits:$('hudUnits'), hudFill:$('hudFill'),
+    hudHead:$('hudHead'), hudMax:$('hudMax'), hudToggle:$('hudToggle'), toggleHUD:$('toggleHUD'),
     tomorrowWrap:$('tomorrowWrap'), useTomorrow:$('useTomorrow'), tioNote:$('tioNote'),
-    toggleHUD:$('toggleHUD')
+    seamarksToggle:$('seamarksToggle'),
+    wwToggle:$('wwToggle'), wwFilter:$('wwFilter'), wwStatus:$('wwStatus')
   };
 
-  /* Map */
+  /* ===== MAP & BASELAYERS ===== */
   const map = L.map('map',{zoomControl:true}).setView([53.35,-6.26],8);
   const styles = {
     streets:`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`,
     outdoor:`https://api.maptiler.com/maps/outdoor-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`,
-    satellite:`https://api.maptiler.com/maps/satellite/{z}/{x}/{y}.jpg?key=${MAPTILER_KEY}`
+    satellite:`https://api.maptiler.com/maps/satellite/{z}/{x}/{y}.jpg?key=${MAPTILER_KEY}`,
+    ocean:`https://api.maptiler.com/maps/ocean/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`
   };
   let base = L.tileLayer(styles.streets,{attribution:'&copy; OpenStreetMap • &copy; MapTiler'}).addTo(map);
   const markers = L.featureGroup().addTo(map);
@@ -236,7 +236,15 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
   map.createPane('radar'); map.getPane('radar').style.zIndex=450;
   const radarLayer = L.tileLayer('',{pane:'radar',opacity:0.7}).addTo(map);
 
-  /* Helpers */
+  // Seamarks overlay
+  const seamarks = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
+    opacity: 0.9, attribution: 'Seamarks © OpenSeaMap'
+  });
+  el.seamarksToggle?.addEventListener('change', e=>{
+    if(e.target.checked) seamarks.addTo(map); else map.removeLayer(seamarks);
+  });
+
+  /* ===== HELPERS ===== */
   let speedUnit='kmh', lastSpeedMs=0, maxSpeed=0, gpsWatchId=null, gotFix=false, radarTimer=null;
   const toF=c=>Math.round(c*9/5+32), msToMph=ms=>Math.round(ms*2.23694), mmToIn=mm=>Math.round(mm/25.4*100)/100, msToKn=ms=>Math.round(ms*1.94384);
   const iconFor=()=> '☁';
@@ -244,10 +252,10 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
   function setMarker(lat,lon,label){ markers.clearLayers(); L.marker([lat,lon]).addTo(markers).bindPopup(label||'Here').openPopup(); }
   function toggleHUD(open){ const s=el.speedHUD; if(!s)return; if(typeof open==='boolean') s.style.display=open?'flex':'none'; else s.style.display=(s.style.display==='flex')?'none':'flex'; }
 
-  /* Style switch */
+  /* Map style switch */
   el.mapStyle.addEventListener('change', e=>{ const v=e.target.value; if(base) map.removeLayer(base); base=L.tileLayer(styles[v],{attribution:'&copy; OpenStreetMap • &copy; MapTiler'}).addTo(map); });
 
-  /* Radar */
+  /* ===== RADAR (RainViewer) ===== */
   const RV={frames:[],idx:0};
   function loadRadar(){
     fetch('https://api.rainviewer.com/public/weather-maps.json',{cache:'no-store'})
@@ -265,7 +273,7 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
   el.opacity.addEventListener('input', e=>radarLayer.setOpacity(+e.target.value));
   el.refresh.addEventListener('click', loadRadar);
 
-  /* Search / Geo */
+  /* ===== SEARCH / GEO ===== */
   function doSearch(){
     const q=el.search.value.trim(); if(!q) return;
     const eir=/^[A-Z0-9]{3}\s?[A-Z0-9]{4}$/i;
@@ -277,7 +285,7 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
   el.btnGeo.addEventListener('click', ()=>{ if(!navigator.geolocation)return; navigator.geolocation.getCurrentPosition(pos=>{ const {latitude:lat,longitude:lon}=pos.coords; map.setView([lat,lon],11); setMarker(lat,lon,'You are here'); updateAll(lat,lon,'My location'); }); });
   el.btnPin.addEventListener('click', ()=>{ const c=map.getCenter(); setMarker(c.lat,c.lng,'Pinned point'); updateAll(c.lat,c.lng,'Pinned point'); });
 
-  /* Weather (Open-Meteo) */
+  /* ===== WEATHER (Open-Meteo) ===== */
   el.units.addEventListener('change', ()=>{ const c=map.getCenter(); updateAll(c.lat,c.lng,'Updated units'); });
 
   function updateAll(lat,lon,label){
@@ -290,9 +298,9 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
     return fetch(url,{cache:'no-store'}).then(r=>r.json()).then(j=>{
       const metric=(el.units.value==='metric');
       const tNow=j?.current_weather?.temperature;
-      const wArr=j?.hourly?.windspeed_10m||[], pArr=j?.hourly?.precipitation||[], cArr=j?.hourly?.cloudcover||[], sArr=j?.hourly?.snowfall||[];
+      const wArr=j?.hourly?.windspeed_10m||[], pArr=j?.hourly?.precipitation||[], cArr=j?.hourly?.cloudcover||[];
       const sunrise=j?.daily?.sunrise?.[0], sunset=j?.daily?.sunset?.[0];
-      const wMs=wArr[0], pMm=pArr[0], cl=cArr[0], snow=sArr[0];
+      const wMs=wArr[0], pMm=pArr[0], cl=cArr[0];
 
       el.nowIcon.textContent=iconFor();
       el.temp.textContent=(tNow==null)?'Temp —':(metric?Math.round(tNow)+'°C':toF(tNow)+'°F');
@@ -301,7 +309,6 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
       el.precip.textContent=(pMm==null)?'Precip —':(metric?'Precip '+pMm+' mm':'Precip '+mmToIn(pMm)+' in');
       el.cloud.textContent=(cl==null)?'Cloud —':'Cloud '+cl+'%';
       el.sun.textContent=(sunrise&&sunset)?`Sunrise ${new Date(sunrise).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} / Sunset ${new Date(sunset).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`:'Sunrise — / Sunset —';
-      el.risk.textContent=(snow>0?'❄ snow':'') + ((cl<=0 && pMm>0)?' • 🌧 rain':'') + (snow>0?' • 🧊 ice risk':'');
       el.updated.textContent='Updated '+new Date().toLocaleTimeString();
 
       // Hourly 24
@@ -328,44 +335,36 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
     }).catch(()=>{ el.updated.textContent='Live forecast failed'; });
   }
 
-   /* Tomorrow.io via proxy (always show toggle; disable if offline) */
+  /* ===== Tomorrow.io via proxy (toggle always visible) ===== */
   function markTio(state,msg){
     if(state==='ok'){ el.useTomorrow.disabled=false; el.tomorrowWrap.classList.remove('disabled'); el.tioNote.textContent=''; }
     else { el.useTomorrow.disabled=true; el.tomorrowWrap.classList.add('disabled'); el.tioNote.textContent=msg||'(proxy offline)'; }
   }
-  // Probe the proxy once
+  // Probe once to enable/disable switch
   fetch(`${API_BASE}/api/tomorrow?lat=53.35&lon=-6.26`,{cache:'no-store'})
-    .then(r=>{ if(r.ok) markTio('ok'); else markTio('err'); })
-    .catch(()=> markTio('err'));
+    .then(r=>{ if(r.ok) markTio('ok'); else markTio('err','HTTP '+r.status); })
+    .catch(err=> markTio('err', 'no response'));
 
   function updateTomorrow(lat,lon){
     if (!el.useTomorrow || !el.useTomorrow.checked || el.useTomorrow.disabled) return;
     const metric=(el.units.value==='metric');
     const u = metric ? 'metric' : 'imperial';
     fetch(`${API_BASE}/api/tomorrow?lat=${lat}&lon=${lon}&units=${u}`, { cache:'no-store' })
-      .then(r=>r.json())
+      .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
       .then(j=>{
         const ws = j?.data?.values?.windSpeed; // m/s (metric)
-        if (ws==null) return;
+        if (ws==null) throw new Error('no windSpeed');
         el.wind.dataset.source='tomorrow';
         el.wind.textContent = metric ? (`Wind ${Math.round(ws)} m/s (Tomorrow.io)`)
                                      : (`Wind ${Math.round(ws*2.23694)} mph (Tomorrow.io)`);
       })
-      .catch(()=>{ /* leave Open-Meteo wind */ });
+      .catch(()=>{ /* fall back to Open-Meteo silently */ });
   }
   el.useTomorrow.addEventListener('change', ()=>{ const c=map.getCenter(); updateAll(c.lat,c.lng,'Updated wind source'); });
 
-  /* ===== Waterways (OSM Overpass) ===== */
-  const ww = {
-    layer: L.featureGroup().addTo(map),
-    busy: false,
-    lastFetchAt: 0
-  };
-  ww.layer.remove(); // keep hidden until toggled on
-
-  const elWwToggle = document.getElementById('wwToggle');
-  const elWwFilter = document.getElementById('wwFilter');
-  const elWwStatus = document.getElementById('wwStatus');
+  /* ===== Waterways (OSM Overpass: nodes + ways/areas) ===== */
+  const ww = { layer:L.featureGroup().addTo(map), busy:false, lastFetchAt:0 };
+  ww.layer.remove(); // hidden until toggled
 
   function wwEmoji(tags){
     if (tags.waterway === 'lock_gate') return '🗝️';
@@ -376,96 +375,115 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
     if (tags.man_made === 'pier' || tags.man_made === 'jetty') return '🛳️';
     if (tags.amenity === 'fuel') return '⛽';
     if (tags.harbour === 'yes' || tags['seamark:type'] === 'harbour') return '⚓';
+    if (tags.natural === 'sand' || tags.natural === 'beach') return '🏖️';
     return '📍';
   }
 
   function wwFilters(){
-    const v = elWwFilter?.value || 'all';
+    const v = el.wwFilter?.value || 'all';
     const parts = [];
-    if (v === 'all' || v === 'locks') parts.push('node["waterway"~"lock_gate|weir|dam"]');
-    if (v === 'all' || v === 'slipways') parts.push('node["leisure"="slipway"]');
-    if (v === 'all' || v === 'marinas') parts.push('node["leisure"="marina"]', 'node["seamark:type"="mooring"]');
-    if (v === 'all' || v === 'piers') parts.push('node["man_made"~"pier|jetty"]');
-    if (v === 'all' || v === 'fuel') parts.push('node["amenity"="fuel"]');
-    if (v === 'all') parts.push('node["harbour"="yes"]', 'node["seamark:type"="harbour"]');
+    const locks = '["waterway"~"lock_gate|weir|dam"]';
+    const slip  = '["leisure"="slipway"]';
+    const marina= '["leisure"="marina"]';
+    const moor  = '["seamark:type"="mooring"]';
+    const pier  = '["man_made"~"pier|jetty"]';
+    const fuel  = '["amenity"="fuel"]';
+    const harb  = '["harbour"="yes"]';
+    const sand  = '["natural"~"sand|beach"]';
+    const add = s => parts.push(`node${s}(BBOX);`,`way${s}(BBOX);`,`relation${s}(BBOX);`);
+    if (v==='all' || v==='locks')   add(locks);
+    if (v==='all' || v==='slipways')add(slip);
+    if (v==='all' || v==='marinas') { add(marina); add(moor); }
+    if (v==='all' || v==='piers')   add(pier);
+    if (v==='all' || v==='fuel')    add(fuel);
+    if (v==='all') { add(harb); add(sand); }
     return parts;
   }
 
+  function popupHTML(tags){
+    const type = tags.waterway || tags.leisure || tags.man_made || tags.amenity || tags.harbour || tags['seamark:type'] || tags.natural || 'poi';
+    const name = tags.name || '(no name)';
+    const website = tags.website || tags.contact_website;
+    return `
+      <div style="min-width:200px">
+        <div style="font-size:18px">${wwEmoji(tags)} ${name}</div>
+        <div style="font-size:12px;color:#bbb">${type}</div>
+        ${tags.operator ? `<div>Operator: ${tags.operator}</div>`:''}
+        ${tags.opening_hours ? `<div>Hours: ${tags.opening_hours}</div>`:''}
+        ${website ? `<div><a href="${website}" target="_blank" rel="noopener">Website</a></div>`:''}
+        <div class="sub">OSM data (may be incomplete)</div>
+      </div>`;
+  }
+
   async function loadWaterways(){
-    if (!elWwToggle?.checked) return;
+    if (!el.wwToggle?.checked) return;
     const now = Date.now();
-    if (ww.busy || (now - ww.lastFetchAt < 2000)) return; // simple rate limit
+    if (ww.busy || (now - ww.lastFetchAt < 2000)) return;
     ww.busy = true; ww.lastFetchAt = now;
-    elWwStatus.textContent = 'Loading…';
+    el.wwStatus.textContent = 'Loading…';
 
     const b = map.getBounds();
     const bbox = `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`;
-    const queries = wwFilters().map(q => `${q}(${bbox});`).join('\n');
+    const queries = wwFilters().join('\n').replaceAll('BBOX', bbox);
 
     const overpassQL = `
-[out:json][timeout:15];
+[out:json][timeout:25];
 (
-  ${queries}
+${queries}
 );
-out center tags;`;
+out body center tags;
+>;
+out skel qt;`;
 
     try{
       const r = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        headers: {'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
-        body: 'data=' + encodeURIComponent(overpassQL)
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+        body:'data='+encodeURIComponent(overpassQL)
       });
       const j = await r.json();
 
       ww.layer.clearLayers();
       (j.elements||[]).forEach(e=>{
-        const lat = e.lat || e.center?.lat, lon = e.lon || e.center?.lon;
+        if (!e.tags) return;
+
+        // Ways/relations with geometry
+        if ((e.type==='way' || e.type==='relation') && e.geometry && e.geometry.length){
+          const latlngs = e.geometry.map(pt=>[pt.lat, pt.lon]);
+          const isArea = !!(e.tags.area === 'yes' || e.tags.leisure === 'marina' || e.tags.man_made === 'pier');
+          const shape = isArea ? L.polygon(latlngs, {color:'#4dd0ff', weight:1, opacity:.8, fillOpacity:.1})
+                               : L.polyline(latlngs, {color:'#4dd0ff', weight:2, opacity:.9});
+          shape.bindPopup(popupHTML(e.tags));
+          ww.layer.addLayer(shape);
+          return;
+        }
+
+        // Nodes or center
+        const lat = e.lat || e.center?.lat;
+        const lon = e.lon || e.center?.lon;
         if (lat==null || lon==null) return;
-        const m = L.marker([lat,lon], { title: e.tags?.name || '' })
-          .bindPopup(`
-            <div style="min-width:180px">
-              <div style="font-size:18px">${wwEmoji(e.tags)} ${e.tags?.name || '(no name)'}</div>
-              <div style="font-size:12px;color:#bbb">${e.tags?.waterway || e.tags?.leisure || e.tags?.man_made || e.tags?.amenity || e.tags?.harbour || e.tags?.["seamark:type"] || 'poi'}</div>
-              ${e.tags?.operator ? `<div>Operator: ${e.tags.operator}</div>`:''}
-              ${e.tags?.opening_hours ? `<div>Hours: ${e.tags.opening_hours}</div>`:''}
-              ${(e.tags?.website||e.tags?.contact_website) ? `<div><a href="${e.tags.website||e.tags.contact_website}" target="_blank" rel="noopener">Website</a></div>`:''}
-              <div class="sub">OSM data (may be incomplete)</div>
-            </div>
-          `);
+        const m = L.marker([lat,lon], { title:e.tags.name||'' }).bindPopup(popupHTML(e.tags));
         ww.layer.addLayer(m);
       });
 
       if (!map.hasLayer(ww.layer)) ww.layer.addTo(map);
-      elWwStatus.textContent = `${ww.layer.getLayers().length} features`;
+      el.wwStatus.textContent = `${ww.layer.getLayers().length} features`;
     } catch(err){
-      elWwStatus.textContent = 'Failed';
       console.warn('Overpass failed', err);
+      el.wwStatus.textContent = 'Failed';
     } finally {
       ww.busy = false;
     }
   }
 
-  /* Toggle & refresh */
-  elWwToggle?.addEventListener('change', ()=>{
-    if (elWwToggle.checked) {
-      if (!map.hasLayer(ww.layer)) ww.layer.addTo(map);
-      loadWaterways();
-    } else {
-      if (map.hasLayer(ww.layer)) map.removeLayer(ww.layer);
-      elWwStatus.textContent = '—';
-    }
+  el.wwToggle?.addEventListener('change', ()=>{
+    if (el.wwToggle.checked) { if (!map.hasLayer(ww.layer)) ww.layer.addTo(map); loadWaterways(); }
+    else { if (map.hasLayer(ww.layer)) map.removeLayer(ww.layer); el.wwStatus.textContent='—'; }
   });
-  elWwFilter?.addEventListener('change', ()=>{ loadWaterways(); });
+  el.wwFilter?.addEventListener('change', ()=> loadWaterways());
+  let wwDebounce; map.on('moveend', ()=>{ if (!el.wwToggle?.checked) return; clearTimeout(wwDebounce); wwDebounce=setTimeout(loadWaterways, 400); });
 
-  /* Reload on map movement (debounced) */
-  let wwDebounce;
-  map.on('moveend', ()=>{
-    if (!elWwToggle?.checked) return;
-    clearTimeout(wwDebounce);
-    wwDebounce = setTimeout(loadWaterways, 400);
-  });
-
-  /* GPS (Speedome) */
+  /* ===== GPS (Speedome) ===== */
   function updateSpeedUI(heading){
     el.gps.textContent='⏱ '+fmtSpeed(lastSpeedMs);
     const val = speedUnit==='kmh'? lastSpeedMs*3.6 : speedUnit==='mph'? lastSpeedMs*2.23694 : lastSpeedMs*1.94384;
@@ -492,13 +510,11 @@ out center tags;`;
     }, ()=>{ el.gps.textContent='⏱ GPS unavailable'; }, {enableHighAccuracy:true,maximumAge:4000,timeout:20000});
   }
   el.toggleSpeed.addEventListener('click', ()=>{ speedUnit=(speedUnit==='kmh')?'mph':(speedUnit==='mph')?'knots':'kmh'; updateSpeedUI(NaN); });
-  el.speedoBtn.addEventListener('click', ()=>toggleHUD());
-  el.speedFab.addEventListener('click', ()=>toggleHUD());
-  el.toggleHUD.addEventListener('click', ()=>toggleHUD());
-  el.closeSpeed.addEventListener('click', ()=>toggleHUD(false));
-  el.hudToggle.addEventListener('click', ()=>el.toggleSpeed.click());
+  $('toggleHUD').addEventListener('click', ()=>toggleHUD());
+  $('hudToggle').addEventListener('click', ()=>el.toggleSpeed.click());
+  $('speedFab').addEventListener('click', ()=>toggleHUD());
 
-  /* Init */
+  /* ===== INIT ===== */
   loadRadar(); setInterval(loadRadar,5*60*1000);
   startGPS();
 
