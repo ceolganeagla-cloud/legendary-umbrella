@@ -5,11 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Ceol Gan Eagla — Weather & Marine</title>
 
-<!-- Icons -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
-
-<!-- Leaflet -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
 <style>
@@ -39,15 +36,11 @@ input[type=range]{width:180px}
 #daily{display:grid;grid-template-columns:repeat(7,minmax(90px,1fr));gap:8px}
 .day{background:rgba(255,255,255,.06);border-radius:10px;padding:8px;text-align:center}
 
-/* Map badge clear of zoom; floating Speedome button */
+/* Map badge + floating Speedome button */
 .map-badge{position:absolute;left:58px;top:10px;background:rgba(18,18,22,.9);color:#fff;border:1px solid rgba(255,255,255,.2);padding:6px 8px;border-radius:8px;font-size:12px;z-index:650;pointer-events:none}
 .leaflet-top.leaflet-left .leaflet-control-zoom{margin-top:10px;margin-left:10px}
-.fab{
-  position:absolute; right:12px; bottom:12px; z-index:700;
-  background:#fff; color:#111; border-radius:999px; padding:10px 12px;
-  box-shadow:0 4px 12px rgba(0,0,0,.35); cursor:pointer; user-select:none; font-weight:800
-}
-.fab:active{ transform:translateY(1px) }
+.fab{position:absolute;right:12px;bottom:12px;z-index:700;background:#fff;color:#111;border-radius:999px;padding:10px 12px;box-shadow:0 4px 12px rgba(0,0,0,.35);cursor:pointer;font-weight:800}
+.fab:active{transform:translateY(1px)}
 
 /* Speedome HUD */
 #speedHUD{position:fixed;left:0;right:0;bottom:0;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(10,15,24,.92);backdrop-filter:blur(3px);z-index:9000}
@@ -60,6 +53,9 @@ input[type=range]{width:180px}
 #closeSpeed{position:absolute;right:12px;top:12px}
 .maxChip{background:#142133;border:1px solid #27425e;border-radius:999px;padding:4px 10px}
 
+/* Disabled toggle look */
+.disabled{opacity:.5;pointer-events:none}
+
 @media (max-width:920px){.app{grid-template-columns:1fr;grid-template-rows:52vh 1fr}}
 #err{position:fixed;left:8px;right:8px;bottom:8px;background:#b00020;color:#fff;border-radius:8px;padding:8px;display:none;z-index:9999}
 </style>
@@ -68,7 +64,6 @@ input[type=range]{width:180px}
 <div class="app">
   <div id="map">
     <div id="badge" class="map-badge">Locating…</div>
-    <!-- Floating Speedome button -->
     <div id="speedFab" class="fab" title="Speed HUD">⛵</div>
   </div>
 
@@ -130,9 +125,9 @@ input[type=range]{width:180px}
         <div id="updated" class="chip">—</div>
       </div>
       <div class="row" style="margin-top:8px">
-        <label id="tomorrowWrap" style="display:none">
-          <input type="checkbox" id="useTomorrow" checked> Use Tomorrow.io wind
-        </label>
+        <!-- Always visible; disabled if proxy unreachable -->
+        <label id="tomorrowWrap"><input type="checkbox" id="useTomorrow" checked> Use Tomorrow.io wind</label>
+        <span id="tioNote" class="sub" style="margin-left:6px;"></span>
       </div>
     </div>
 
@@ -143,7 +138,6 @@ input[type=range]{width:180px}
         <button id="toggleSpeed" class="btn ghost" type="button">Units: km/h</button>
         <div id="heading" class="chip">🧭 —°</div>
         <div id="max" class="chip">🏁 Max: 0</div>
-        <!-- Extra toggle inside the GPS card -->
         <button id="toggleHUD" class="btn" type="button">Speedome HUD</button>
       </div>
     </div>
@@ -178,93 +172,68 @@ input[type=range]{width:180px}
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-/* Error banner if something explodes */
+/* CONFIG
+   If this HTML is on the SAME Vercel domain as your API, leave API_BASE = ''.
+   If hosted elsewhere (e.g., GitHub Pages), set it to your Vercel URL.
+   Example: const API_BASE = 'https://your-app.vercel.app';
+*/
+const API_BASE = '';
+
+/* Error banner */
 window.onerror = function(msg){ const e=document.getElementById('err'); e.textContent='Error: '+msg; e.style.display='block'; };
 
 (function(){
-  /* ===== CONFIG ===== */
-  const MAPTILER_KEY = 'MpDV384cXMNO273WsuTG'; // lock this key to your domain in MapTiler
+  const MAPTILER_KEY = 'MpDV384cXMNO273WsuTG';
 
-  /* ===== Elements ===== */
+  /* Elements */
   const $ = id => document.getElementById(id);
   const el = {
-    badge: $('badge'),
-    speedFab: $('speedFab'),
-    search: $('search'), btnSearch: $('btnSearch'),
-    btnGeo: $('btnGeo'), btnPin: $('btnPin'),
-    units: $('units'), mapStyle: $('mapStyle'),
-    play: $('play'), frame: $('frame'), frametime: $('frametime'),
-    opacity: $('opacity'), refresh: $('refresh'),
-    nowIcon: $('nowIcon'), temp: $('temp'), wind: $('wind'), precip: $('precip'),
-    cloud: $('cloud'), sun: $('sun'), risk: $('risk'), updated: $('updated'),
-    hourly: $('hourly'), daily: $('daily'),
-    gps: $('gps'), toggleSpeed: $('toggleSpeed'), heading: $('heading'), max: $('max'),
-    speedoBtn: $('speedoBtn'), speedHUD: $('speedHUD'), closeSpeed: $('closeSpeed'),
-    hudVal: $('hudVal'), hudUnits: $('hudUnits'), hudFill: $('hudFill'),
-    hudHead: $('hudHead'), hudMax: $('hudMax'), hudToggle: $('hudToggle'),
-    tomorrowWrap: $('tomorrowWrap'), useTomorrow: $('useTomorrow'),
-    toggleHUD: $('toggleHUD'),
-    err: $('err')
+    badge:$('badge'), speedFab:$('speedFab'),
+    search:$('search'), btnSearch:$('btnSearch'),
+    btnGeo:$('btnGeo'), btnPin:$('btnPin'),
+    units:$('units'), mapStyle:$('mapStyle'),
+    play:$('play'), frame:$('frame'), frametime:$('frametime'),
+    opacity:$('opacity'), refresh:$('refresh'),
+    nowIcon:$('nowIcon'), temp:$('temp'), wind:$('wind'), precip:$('precip'),
+    cloud:$('cloud'), sun:$('sun'), risk:$('risk'), updated:$('updated'),
+    hourly:$('hourly'), daily:$('daily'),
+    gps:$('gps'), toggleSpeed:$('toggleSpeed'), heading:$('heading'), max:$('max'),
+    speedoBtn:$('speedoBtn'), speedHUD:$('speedHUD'), closeSpeed:$('closeSpeed'),
+    hudVal:$('hudVal'), hudUnits:$('hudUnits'), hudFill:$('hudFill'),
+    hudHead:$('hudHead'), hudMax:$('hudMax'), hudToggle:$('hudToggle'),
+    tomorrowWrap:$('tomorrowWrap'), useTomorrow:$('useTomorrow'), tioNote:$('tioNote'),
+    toggleHUD:$('toggleHUD')
   };
 
-  /* ===== MAP ===== */
-  const map = L.map('map', { zoomControl:true }).setView([53.35,-6.26], 8);
+  /* Map */
+  const map = L.map('map',{zoomControl:true}).setView([53.35,-6.26],8);
   const styles = {
-    streets:   `https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`,
-    outdoor:   `https://api.maptiler.com/maps/outdoor-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`,
-    satellite: `https://api.maptiler.com/maps/satellite/{z}/{x}/{y}.jpg?key=${MAPTILER_KEY}`
+    streets:`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`,
+    outdoor:`https://api.maptiler.com/maps/outdoor-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`,
+    satellite:`https://api.maptiler.com/maps/satellite/{z}/{x}/{y}.jpg?key=${MAPTILER_KEY}`
   };
-  let base = L.tileLayer(styles.streets, { attribution: '&copy; OpenStreetMap • &copy; MapTiler' }).addTo(map);
+  let base = L.tileLayer(styles.streets,{attribution:'&copy; OpenStreetMap • &copy; MapTiler'}).addTo(map);
   const markers = L.featureGroup().addTo(map);
 
-  // Radar pane
-  map.createPane('radar'); map.getPane('radar').style.zIndex = 450;
-  const radarLayer = L.tileLayer('', { pane:'radar', opacity:0.7 }).addTo(map);
+  map.createPane('radar'); map.getPane('radar').style.zIndex=450;
+  const radarLayer = L.tileLayer('',{pane:'radar',opacity:0.7}).addTo(map);
 
-  /* ===== Helpers ===== */
+  /* Helpers */
   let speedUnit='kmh', lastSpeedMs=0, maxSpeed=0, gpsWatchId=null, gotFix=false, radarTimer=null;
-  const toF=c=>Math.round(c*9/5+32);
-  const msToMph=ms=>Math.round(ms*2.23694);
-  const mmToIn=mm=>Math.round(mm/25.4*100)/100;
-  const msToKn =ms=>Math.round(ms*1.94384);
+  const toF=c=>Math.round(c*9/5+32), msToMph=ms=>Math.round(ms*2.23694), mmToIn=mm=>Math.round(mm/25.4*100)/100, msToKn=ms=>Math.round(ms*1.94384);
   const iconFor=()=> '☁';
+  const fmtSpeed=ms=>{ ms=(ms==null||isNaN(ms))?0:ms; if(speedUnit==='kmh')return Math.round(ms*3.6)+' km/h'; if(speedUnit==='mph')return Math.round(ms*2.23694)+' mph'; return msToKn(ms)+' knots'; };
+  function setMarker(lat,lon,label){ markers.clearLayers(); L.marker([lat,lon]).addTo(markers).bindPopup(label||'Here').openPopup(); }
+  function toggleHUD(open){ const s=el.speedHUD; if(!s)return; if(typeof open==='boolean') s.style.display=open?'flex':'none'; else s.style.display=(s.style.display==='flex')?'none':'flex'; }
 
-  const fmtSpeed=ms=>{
-    ms=(ms==null||isNaN(ms))?0:ms;
-    if(speedUnit==='kmh') return Math.round(ms*3.6)+' km/h';
-    if(speedUnit==='mph') return Math.round(ms*2.23694)+' mph';
-    return Math.round(ms*1.94384)+' knots';
-  };
+  /* Style switch */
+  el.mapStyle.addEventListener('change', e=>{ const v=e.target.value; if(base) map.removeLayer(base); base=L.tileLayer(styles[v],{attribution:'&copy; OpenStreetMap • &copy; MapTiler'}).addTo(map); });
 
-  function setMarker(lat,lon,label){
-    markers.clearLayers();
-    L.marker([lat,lon]).addTo(markers).bindPopup(label||'Here').openPopup();
-  }
-
-  /* Toggle Speedome HUD helpers */
-  function toggleHUD(open){
-    const s = el.speedHUD;
-    if (!s) return;
-    if (typeof open === 'boolean') s.style.display = open ? 'flex' : 'none';
-    else s.style.display = (s.style.display === 'flex') ? 'none' : 'flex';
-  }
-
-  /* ===== Map style switch ===== */
-  el.mapStyle.addEventListener('change', e=>{
-    const v=e.target.value;
-    if (base) map.removeLayer(base);
-    base = L.tileLayer(styles[v], { attribution: '&copy; OpenStreetMap • &copy; MapTiler' }).addTo(map);
-  });
-
-  /* ===== Radar (RainViewer) ===== */
+  /* Radar */
   const RV={frames:[],idx:0};
   function loadRadar(){
     fetch('https://api.rainviewer.com/public/weather-maps.json',{cache:'no-store'})
-      .then(r=>r.json()).then(j=>{
-        RV.frames=[...(j?.radar?.past||[]), ...(j?.radar?.nowcast||[])];
-        el.frame.max=Math.max(RV.frames.length-1,0);
-        setRadar(RV.frames.length-1);
-      }).catch(()=>{});
+      .then(r=>r.json()).then(j=>{ RV.frames=[...(j?.radar?.past||[]),...(j?.radar?.nowcast||[])]; el.frame.max=Math.max(RV.frames.length-1,0); setRadar(RV.frames.length-1); }).catch(()=>{});
   }
   function setRadar(i){
     if(!RV.frames.length) return;
@@ -274,54 +243,32 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
     el.frametime.textContent=new Date(fr.time*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
   }
   el.frame.addEventListener('input', e=>setRadar(+e.target.value));
-  el.play.addEventListener('click', ()=>{
-    if (radarTimer){ clearInterval(radarTimer); radarTimer=null; el.play.textContent='▶︎'; return; }
-    if (!RV.frames.length) return;
-    el.play.textContent='⏸';
-    radarTimer=setInterval(()=>{ const n=(RV.idx+1)%RV.frames.length; el.frame.value=n; setRadar(n); },700);
-  });
+  el.play.addEventListener('click', ()=>{ if(radarTimer){clearInterval(radarTimer);radarTimer=null;el.play.textContent='▶︎';return;} if(!RV.frames.length)return; el.play.textContent='⏸'; radarTimer=setInterval(()=>{ const n=(RV.idx+1)%RV.frames.length; el.frame.value=n; setRadar(n); },700); });
   el.opacity.addEventListener('input', e=>radarLayer.setOpacity(+e.target.value));
   el.refresh.addEventListener('click', loadRadar);
 
-  /* ===== Search / Geo ===== */
+  /* Search / Geo */
   function doSearch(){
     const q=el.search.value.trim(); if(!q) return;
     const eir=/^[A-Z0-9]{3}\s?[A-Z0-9]{4}$/i;
-    const url = eir.test(q)
-      ? `https://nominatim.openstreetmap.org/search?postalcode=${q.replace(/\s+/g,'')}&countrycodes=ie&format=json&addressdetails=1&limit=5`
-      : `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`;
-    fetch(url,{headers:{'Accept-Language':'en'}})
-      .then(r=>r.json()).then(arr=>{
-        if(!arr?.length) return;
-        const lat=parseFloat(arr[0].lat), lon=parseFloat(arr[0].lon), name=arr[0].display_name||'Location';
-        map.setView([lat,lon],11); setMarker(lat,lon,name); updateAll(lat,lon,name);
-      }).catch(()=>{});
+    const url=eir.test(q)?`https://nominatim.openstreetmap.org/search?postalcode=${q.replace(/\s+/g,'')}&countrycodes=ie&format=json&addressdetails=1&limit=5`:`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`;
+    fetch(url,{headers:{'Accept-Language':'en'}}).then(r=>r.json()).then(arr=>{ if(!arr?.length)return; const lat=parseFloat(arr[0].lat),lon=parseFloat(arr[0].lon),name=arr[0].display_name||'Location'; map.setView([lat,lon],11); setMarker(lat,lon,name); updateAll(lat,lon,name); }).catch(()=>{});
   }
   el.btnSearch.addEventListener('click', doSearch);
   el.search.addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
-  el.btnGeo.addEventListener('click', ()=>{
-    if(!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(pos=>{
-      const {latitude:lat, longitude:lon}=pos.coords;
-      map.setView([lat,lon],11); setMarker(lat,lon,'You are here'); updateAll(lat,lon,'My location');
-    });
-  });
+  el.btnGeo.addEventListener('click', ()=>{ if(!navigator.geolocation)return; navigator.geolocation.getCurrentPosition(pos=>{ const {latitude:lat,longitude:lon}=pos.coords; map.setView([lat,lon],11); setMarker(lat,lon,'You are here'); updateAll(lat,lon,'My location'); }); });
   el.btnPin.addEventListener('click', ()=>{ const c=map.getCenter(); setMarker(c.lat,c.lng,'Pinned point'); updateAll(c.lat,c.lng,'Pinned point'); });
 
-  /* ===== Weather (Open-Meteo primary) ===== */
+  /* Weather (Open-Meteo) */
   el.units.addEventListener('change', ()=>{ const c=map.getCenter(); updateAll(c.lat,c.lng,'Updated units'); });
 
   function updateAll(lat,lon,label){
     el.badge.textContent=`${label||'Here'} • ${lat.toFixed(3)}, ${lon.toFixed(3)}`;
-    updateForecast(lat,lon).then(()=>{ if (el.useTomorrow?.checked) updateTomorrow(lat,lon); });
+    updateForecast(lat,lon).then(()=>{ if(el.useTomorrow?.checked && !el.useTomorrow.disabled) updateTomorrow(lat,lon); });
   }
 
   function updateForecast(lat,lon){
-    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
-      +`&current_weather=true`
-      +`&hourly=temperature_2m,precipitation,cloudcover,windspeed_10m,weathercode,snowfall`
-      +`&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,sunrise,sunset`
-      +`&forecast_days=7&timezone=auto`;
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=temperature_2m,precipitation,cloudcover,windspeed_10m,weathercode,snowfall&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,sunrise,sunset&forecast_days=7&timezone=auto`;
     return fetch(url,{cache:'no-store'}).then(r=>r.json()).then(j=>{
       const metric=(el.units.value==='metric');
       const tNow=j?.current_weather?.temperature;
@@ -343,14 +290,10 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
       el.hourly.innerHTML='';
       const H=Math.min(24,(j?.hourly?.time||[]).length);
       for(let i=0;i<H;i++){
-        const ti=j.hourly.time[i].slice(11,16);
-        const tc=j.hourly.temperature_2m[i];
-        const pp=j.hourly.precipitation[i];
+        const ti=j.hourly.time[i].slice(11,16), tc=j.hourly.temperature_2m[i], pp=j.hourly.precipitation[i];
         const div=document.createElement('div');
         div.className='hour';
-        div.innerHTML=ti+'<div class="ico">☁</div>'
-          +(metric?Math.round(tc)+'°C':toF(tc)+'°F')+'<br>'
-          +(metric?pp+' mm':mmToIn(pp)+' in');
+        div.innerHTML=`${ti}<div class="ico">☁</div>${metric?Math.round(tc)+'°C':toF(tc)+'°F'}<br>${metric?pp+' mm':mmToIn(pp)+' in'}`;
         el.hourly.appendChild(div);
       }
       // Daily 7
@@ -358,82 +301,80 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
       const D=(j?.daily?.time||[]).length;
       for(let d=0; d<D; d++){
         const wd=new Date(j.daily.time[d]).toLocaleDateString(undefined,{weekday:'short'});
-        const tmax=j.daily.temperature_2m_max[d], tmin=j.daily.temperature_2m_min[d];
-        const pr=j.daily.precipitation_sum?.[d]??0;
+        const tmax=j.daily.temperature_2m_max[d], tmin=j.daily.temperature_2m_min[d], pr=j.daily.precipitation_sum?.[d]??0;
         const row=document.createElement('div');
         row.className='day';
-        row.innerHTML=wd+'<div class="ico">☁</div>'
-          +(metric?Math.round(tmax)+'°C / '+Math.round(tmin)+'°C':toF(tmax)+'°F / '+toF(tmin)+'°F')+'<br>'
-          +(metric?pr+' mm':mmToIn(pr)+' in');
+        row.innerHTML=`${wd}<div class="ico">☁</div>${metric?Math.round(tmax)+'°C / '+Math.round(tmin)+'°C':toF(tmax)+'°F / '+toF(tmin)+'°F'}<br>${metric?pr+' mm':mmToIn(pr)+' in'}`;
         el.daily.appendChild(row);
       }
-    });
+    }).catch(()=>{ el.updated.textContent='Live forecast failed'; });
   }
 
-  /* ===== Tomorrow.io via Vercel proxy (no key in client) ===== */
-  // Show the switch only if the endpoint answers
-  fetch('/api/tomorrow?lat=53.35&lon=-6.26',{cache:'no-store'})
-    .then(r=>{ if(r.ok && el.tomorrowWrap) el.tomorrowWrap.style.display='inline-block'; })
-    .catch(()=>{});
+  /* Tomorrow.io via proxy (always show toggle; disable if offline) */
+  function markTio(state,msg){
+    if(state==='ok'){ el.useTomorrow.disabled=false; el.tomorrowWrap.classList.remove('disabled'); el.tioNote.textContent=''; }
+    else { el.useTomorrow.disabled=true; el.tomorrowWrap.classList.add('disabled'); el.tioNote.textContent=msg||'(proxy offline)'; }
+  }
+  // Probe the proxy once
+  fetch(`${API_BASE}/api/tomorrow?lat=53.35&lon=-6.26`,{cache:'no-store'})
+    .then(r=>{ if(r.ok) markTio('ok'); else markTio('err'); })
+    .catch(()=> markTio('err'));
 
   function updateTomorrow(lat,lon){
-    if (!el.useTomorrow || !el.useTomorrow.checked) return;
+    if (!el.useTomorrow || !el.useTomorrow.checked || el.useTomorrow.disabled) return;
     const metric=(el.units.value==='metric');
     const u = metric ? 'metric' : 'imperial';
-    fetch(`/api/tomorrow?lat=${lat}&lon=${lon}&units=${u}`, { cache:'no-store' })
+    fetch(`${API_BASE}/api/tomorrow?lat=${lat}&lon=${lon}&units=${u}`, { cache:'no-store' })
       .then(r=>r.json())
       .then(j=>{
-        const ws = j?.data?.values?.windSpeed; // m/s when units=metric
+        const ws = j?.data?.values?.windSpeed; // m/s (metric)
         if (ws==null) return;
         el.wind.dataset.source='tomorrow';
         el.wind.textContent = metric ? (`Wind ${Math.round(ws)} m/s (Tomorrow.io)`)
                                      : (`Wind ${Math.round(ws*2.23694)} mph (Tomorrow.io)`);
       })
-      .catch(()=>{});
+      .catch(()=>{ /* leave Open-Meteo wind */ });
   }
-  el.useTomorrow?.addEventListener('change', ()=>{ const c=map.getCenter(); updateAll(c.lat,c.lng,'Updated wind source'); });
+  el.useTomorrow.addEventListener('change', ()=>{ const c=map.getCenter(); updateAll(c.lat,c.lng,'Updated wind source'); });
 
-  /* ===== GPS (Speedome) ===== */
+  /* GPS (Speedome) */
   function updateSpeedUI(heading){
-    el.gps.textContent = '⏱ '+fmtSpeed(lastSpeedMs);
+    el.gps.textContent='⏱ '+fmtSpeed(lastSpeedMs);
     const val = speedUnit==='kmh'? lastSpeedMs*3.6 : speedUnit==='mph'? lastSpeedMs*2.23694 : lastSpeedMs*1.94384;
     const cap = speedUnit==='kmh'? 60 : speedUnit==='mph'? 40 : 30;
-    el.hudVal.textContent = Math.round(val);
-    el.hudUnits.textContent = (speedUnit==='kmh'?'km/h':speedUnit==='mph'?'mph':'knots');
-    el.hudFill.style.width = Math.min(100, Math.round(val/cap*100))+'%';
-    el.hudHead.textContent = '🧭 ' + (isFinite(heading)?Math.round(heading)+'°':'—°');
-    el.hudMax.textContent  = '🏁 Max ' + (speedUnit==='kmh'? Math.round(maxSpeed*3.6) : speedUnit==='mph'? Math.round(maxSpeed*2.23694) : Math.round(maxSpeed*1.94384));
-    el.toggleSpeed.textContent = 'Units: ' + (speedUnit==='kmh'?'km/h':speedUnit==='mph'?'mph':'knots');
-    el.max.textContent = '🏁 Max: ' + fmtSpeed(maxSpeed);
-    el.heading.textContent = '🧭 ' + (isFinite(heading)?Math.round(heading)+'°':'—°');
+    el.hudVal.textContent=Math.round(val);
+    el.hudUnits.textContent=(speedUnit==='kmh'?'km/h':speedUnit==='mph'?'mph':'knots');
+    el.hudFill.style.width=Math.min(100,Math.round(val/cap*100))+'%';
+    el.hudHead.textContent='🧭 '+(isFinite(heading)?Math.round(heading)+'°':'—°');
+    el.hudMax.textContent='🏁 Max '+(speedUnit==='kmh'?Math.round(maxSpeed*3.6):speedUnit==='mph'?Math.round(maxSpeed*2.23694):Math.round(maxSpeed*1.94384));
+    el.toggleSpeed.textContent='Units: '+(speedUnit==='kmh'?'km/h':speedUnit==='mph'?'mph':'knots');
+    el.max.textContent='🏁 Max: '+fmtSpeed(maxSpeed);
+    el.heading.textContent='🧭 '+(isFinite(heading)?Math.round(heading)+'°':'—°');
   }
-
   function startGPS(){
     if(!navigator.geolocation){ el.gps.textContent='⏱ GPS not supported'; return; }
-    if (gpsWatchId!==null) return;
-    gpsWatchId = navigator.geolocation.watchPosition(pos=>{
+    if(gpsWatchId!==null) return;
+    gpsWatchId=navigator.geolocation.watchPosition(pos=>{
       const {latitude:lat, longitude:lon, speed, heading}=pos.coords;
-      lastSpeedMs = speed==null?0:speed;
-      if (lastSpeedMs>maxSpeed) maxSpeed=lastSpeedMs;
+      lastSpeedMs=(speed==null)?0:speed;
+      if(lastSpeedMs>maxSpeed) maxSpeed=lastSpeedMs;
       updateSpeedUI(heading);
-      el.badge.textContent = `${lat.toFixed(3)}, ${lon.toFixed(3)} • ${fmtSpeed(lastSpeedMs)}`;
-      if (!gotFix){ gotFix=true; map.setView([lat,lon],11); setMarker(lat,lon,'You are here'); updateAll(lat,lon,'My location'); }
-    }, ()=>{ el.gps.textContent='⏱ GPS unavailable'; }, { enableHighAccuracy:true, maximumAge:4000, timeout:20000 });
+      el.badge.textContent=`${lat.toFixed(3)}, ${lon.toFixed(3)} • ${fmtSpeed(lastSpeedMs)}`;
+      if(!gotFix){ gotFix=true; map.setView([lat,lon],11); setMarker(lat,lon,'You are here'); updateAll(lat,lon,'My location'); }
+    }, ()=>{ el.gps.textContent='⏱ GPS unavailable'; }, {enableHighAccuracy:true,maximumAge:4000,timeout:20000});
   }
+  el.toggleSpeed.addEventListener('click', ()=>{ speedUnit=(speedUnit==='kmh')?'mph':(speedUnit==='mph')?'knots':'kmh'; updateSpeedUI(NaN); });
+  el.speedoBtn.addEventListener('click', ()=>toggleHUD());
+  el.speedFab.addEventListener('click', ()=>toggleHUD());
+  el.toggleHUD.addEventListener('click', ()=>toggleHUD());
+  el.closeSpeed.addEventListener('click', ()=>toggleHUD(false));
+  el.hudToggle.addEventListener('click', ()=>el.toggleSpeed.click());
 
-  // Unit cycle + HUD toggles
-  el.toggleSpeed.addEventListener('click', ()=>{ speedUnit = (speedUnit==='kmh')?'mph':(speedUnit==='mph')?'knots':'kmh'; updateSpeedUI(NaN); });
-  el.speedoBtn.addEventListener('click', ()=> toggleHUD());
-  el.speedFab.addEventListener('click', ()=> toggleHUD());
-  el.toggleHUD.addEventListener('click', ()=> toggleHUD());
-  el.closeSpeed.addEventListener('click', ()=> toggleHUD(false));
-  el.hudToggle.addEventListener('click', ()=> el.toggleSpeed.click());
-
-  /* ===== INIT ===== */
-  loadRadar(); setInterval(loadRadar, 5*60*1000);
+  /* Init */
+  loadRadar(); setInterval(loadRadar,5*60*1000);
   startGPS();
 
-  if (navigator.geolocation){
+  if(navigator.geolocation){
     navigator.geolocation.getCurrentPosition(
       p=>{ const {latitude:lat,longitude:lon}=p.coords; map.setView([lat,lon],11); updateAll(lat,lon,'My location'); },
       ()=>updateAll(53.35,-6.26,'Dublin area')
