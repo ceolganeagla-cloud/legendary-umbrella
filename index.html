@@ -328,7 +328,7 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
     }).catch(()=>{ el.updated.textContent='Live forecast failed'; });
   }
 
-  /* Tomorrow.io via proxy (always show toggle; disable if offline) */
+   /* Tomorrow.io via proxy (always show toggle; disable if offline) */
   function markTio(state,msg){
     if(state==='ok'){ el.useTomorrow.disabled=false; el.tomorrowWrap.classList.remove('disabled'); el.tioNote.textContent=''; }
     else { el.useTomorrow.disabled=true; el.tomorrowWrap.classList.add('disabled'); el.tioNote.textContent=msg||'(proxy offline)'; }
@@ -351,120 +351,119 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
         el.wind.textContent = metric ? (`Wind ${Math.round(ws)} m/s (Tomorrow.io)`)
                                      : (`Wind ${Math.round(ws*2.23694)} mph (Tomorrow.io)`);
       })
+      .catch(()=>{ /* leave Open-Meteo wind */ });
+  }
+  el.useTomorrow.addEventListener('change', ()=>{ const c=map.getCenter(); updateAll(c.lat,c.lng,'Updated wind source'); });
 
-      /* ===== Waterways (OSM Overpass) ===== */
-const ww = {
-  layer: L.featureGroup().addTo(map),
-  busy: false,
-  lastFetchAt: 0
-};
-ww.layer.remove(); // keep hidden until toggled on
+  /* ===== Waterways (OSM Overpass) ===== */
+  const ww = {
+    layer: L.featureGroup().addTo(map),
+    busy: false,
+    lastFetchAt: 0
+  };
+  ww.layer.remove(); // keep hidden until toggled on
 
-const elWwToggle = document.getElementById('wwToggle');
-const elWwFilter = document.getElementById('wwFilter');
-const elWwStatus = document.getElementById('wwStatus');
+  const elWwToggle = document.getElementById('wwToggle');
+  const elWwFilter = document.getElementById('wwFilter');
+  const elWwStatus = document.getElementById('wwStatus');
 
-function wwEmoji(tags){
-  if (tags.waterway === 'lock_gate') return '🗝️';
-  if (tags.waterway === 'weir') return '🌊';
-  if (tags.waterway === 'dam') return '🧱';
-  if (tags.leisure === 'slipway') return '🛶';
-  if (tags.leisure === 'marina' || tags['seamark:type'] === 'mooring') return '⛵';
-  if (tags.man_made === 'pier' || tags.man_made === 'jetty') return '🛳️';
-  if (tags.amenity === 'fuel') return '⛽';
-  if (tags.harbour === 'yes' || tags['seamark:type'] === 'harbour') return '⚓';
-  return '📍';
-}
+  function wwEmoji(tags){
+    if (tags.waterway === 'lock_gate') return '🗝️';
+    if (tags.waterway === 'weir') return '🌊';
+    if (tags.waterway === 'dam') return '🧱';
+    if (tags.leisure === 'slipway') return '🛶';
+    if (tags.leisure === 'marina' || tags['seamark:type'] === 'mooring') return '⛵';
+    if (tags.man_made === 'pier' || tags.man_made === 'jetty') return '🛳️';
+    if (tags.amenity === 'fuel') return '⛽';
+    if (tags.harbour === 'yes' || tags['seamark:type'] === 'harbour') return '⚓';
+    return '📍';
+  }
 
-function wwFilters(){
-  const v = elWwFilter?.value || 'all';
-  const parts = [];
-  if (v === 'all' || v === 'locks') parts.push('node["waterway"~"lock_gate|weir|dam"]');
-  if (v === 'all' || v === 'slipways') parts.push('node["leisure"="slipway"]');
-  if (v === 'all' || v === 'marinas') parts.push('node["leisure"="marina"]', 'node["seamark:type"="mooring"]');
-  if (v === 'all' || v === 'piers') parts.push('node["man_made"~"pier|jetty"]');
-  if (v === 'all' || v === 'fuel') parts.push('node["amenity"="fuel"]');
-  // harbours sprinkled into “all”
-  if (v === 'all') parts.push('node["harbour"="yes"]', 'node["seamark:type"="harbour"]');
-  return parts;
-}
+  function wwFilters(){
+    const v = elWwFilter?.value || 'all';
+    const parts = [];
+    if (v === 'all' || v === 'locks') parts.push('node["waterway"~"lock_gate|weir|dam"]');
+    if (v === 'all' || v === 'slipways') parts.push('node["leisure"="slipway"]');
+    if (v === 'all' || v === 'marinas') parts.push('node["leisure"="marina"]', 'node["seamark:type"="mooring"]');
+    if (v === 'all' || v === 'piers') parts.push('node["man_made"~"pier|jetty"]');
+    if (v === 'all' || v === 'fuel') parts.push('node["amenity"="fuel"]');
+    if (v === 'all') parts.push('node["harbour"="yes"]', 'node["seamark:type"="harbour"]');
+    return parts;
+  }
 
-async function loadWaterways(){
-  if (!elWwToggle?.checked) return;
-  const now = Date.now();
-  if (ww.busy || (now - ww.lastFetchAt < 2000)) return; // simple rate limit
-  ww.busy = true; ww.lastFetchAt = now;
-  elWwStatus.textContent = 'Loading…';
+  async function loadWaterways(){
+    if (!elWwToggle?.checked) return;
+    const now = Date.now();
+    if (ww.busy || (now - ww.lastFetchAt < 2000)) return; // simple rate limit
+    ww.busy = true; ww.lastFetchAt = now;
+    elWwStatus.textContent = 'Loading…';
 
-  const b = map.getBounds();
-  const bbox = `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`;
-  const queries = wwFilters().map(q => `${q}(${bbox});`).join('\n');
+    const b = map.getBounds();
+    const bbox = `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`;
+    const queries = wwFilters().map(q => `${q}(${bbox});`).join('\n');
 
-  const overpassQL = `
+    const overpassQL = `
 [out:json][timeout:15];
 (
   ${queries}
 );
 out center tags;`;
 
-  try{
-    const r = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      headers: {'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
-      body: 'data=' + encodeURIComponent(overpassQL)
-    });
-    const j = await r.json();
+    try{
+      const r = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        headers: {'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+        body: 'data=' + encodeURIComponent(overpassQL)
+      });
+      const j = await r.json();
 
-    ww.layer.clearLayers();
-    (j.elements||[]).forEach(e=>{
-      const lat = e.lat || e.center?.lat, lon = e.lon || e.center?.lon;
-      if (lat==null || lon==null) return;
-      const m = L.marker([lat,lon], { title: e.tags?.name || '' })
-        .bindPopup(`
-          <div style="min-width:180px">
-            <div style="font-size:18px">${wwEmoji(e.tags)} ${e.tags?.name || '(no name)'}</div>
-            <div style="font-size:12px;color:#bbb">${e.tags?.waterway || e.tags?.leisure || e.tags?.man_made || e.tags?.amenity || e.tags?.harbour || e.tags?.["seamark:type"] || 'poi'}</div>
-            ${e.tags?.operator ? `<div>Operator: ${e.tags.operator}</div>`:''}
-            ${e.tags?.opening_hours ? `<div>Hours: ${e.tags.opening_hours}</div>`:''}
-            ${(e.tags?.website||e.tags?.contact_website) ? `<div><a href="${e.tags.website||e.tags.contact_website}" target="_blank" rel="noopener">Website</a></div>`:''}
-            <div class="sub">OSM data (may be incomplete)</div>
-          </div>
-        `);
-      ww.layer.addLayer(m);
-    });
+      ww.layer.clearLayers();
+      (j.elements||[]).forEach(e=>{
+        const lat = e.lat || e.center?.lat, lon = e.lon || e.center?.lon;
+        if (lat==null || lon==null) return;
+        const m = L.marker([lat,lon], { title: e.tags?.name || '' })
+          .bindPopup(`
+            <div style="min-width:180px">
+              <div style="font-size:18px">${wwEmoji(e.tags)} ${e.tags?.name || '(no name)'}</div>
+              <div style="font-size:12px;color:#bbb">${e.tags?.waterway || e.tags?.leisure || e.tags?.man_made || e.tags?.amenity || e.tags?.harbour || e.tags?.["seamark:type"] || 'poi'}</div>
+              ${e.tags?.operator ? `<div>Operator: ${e.tags.operator}</div>`:''}
+              ${e.tags?.opening_hours ? `<div>Hours: ${e.tags.opening_hours}</div>`:''}
+              ${(e.tags?.website||e.tags?.contact_website) ? `<div><a href="${e.tags.website||e.tags.contact_website}" target="_blank" rel="noopener">Website</a></div>`:''}
+              <div class="sub">OSM data (may be incomplete)</div>
+            </div>
+          `);
+        ww.layer.addLayer(m);
+      });
 
-    if (!map.hasLayer(ww.layer)) ww.layer.addTo(map);
-    elWwStatus.textContent = `${ww.layer.getLayers().length} features`;
-  } catch(err){
-    elWwStatus.textContent = 'Failed';
-    console.warn('Overpass failed', err);
-  } finally {
-    ww.busy = false;
+      if (!map.hasLayer(ww.layer)) ww.layer.addTo(map);
+      elWwStatus.textContent = `${ww.layer.getLayers().length} features`;
+    } catch(err){
+      elWwStatus.textContent = 'Failed';
+      console.warn('Overpass failed', err);
+    } finally {
+      ww.busy = false;
+    }
   }
-}
 
-/* Toggle & refresh */
-elWwToggle?.addEventListener('change', ()=>{
-  if (elWwToggle.checked) {
-    if (!map.hasLayer(ww.layer)) ww.layer.addTo(map);
-    loadWaterways();
-  } else {
-    if (map.hasLayer(ww.layer)) map.removeLayer(ww.layer);
-    elWwStatus.textContent = '—';
-  }
-});
-elWwFilter?.addEventListener('change', ()=>{ loadWaterways(); });
+  /* Toggle & refresh */
+  elWwToggle?.addEventListener('change', ()=>{
+    if (elWwToggle.checked) {
+      if (!map.hasLayer(ww.layer)) ww.layer.addTo(map);
+      loadWaterways();
+    } else {
+      if (map.hasLayer(ww.layer)) map.removeLayer(ww.layer);
+      elWwStatus.textContent = '—';
+    }
+  });
+  elWwFilter?.addEventListener('change', ()=>{ loadWaterways(); });
 
-/* Reload on map movement (debounced) */
-let wwDebounce;
-map.on('moveend', ()=>{
-  if (!elWwToggle?.checked) return;
-  clearTimeout(wwDebounce);
-  wwDebounce = setTimeout(loadWaterways, 400);
-});
-      .catch(()=>{ /* leave Open-Meteo wind */ });
-  }
-  el.useTomorrow.addEventListener('change', ()=>{ const c=map.getCenter(); updateAll(c.lat,c.lng,'Updated wind source'); });
+  /* Reload on map movement (debounced) */
+  let wwDebounce;
+  map.on('moveend', ()=>{
+    if (!elWwToggle?.checked) return;
+    clearTimeout(wwDebounce);
+    wwDebounce = setTimeout(loadWaterways, 400);
+  });
 
   /* GPS (Speedome) */
   function updateSpeedUI(heading){
