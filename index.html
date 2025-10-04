@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
 <style>
-:root{--bg:#0b1220;--panel:#12141c;--card:#1a1e29;--text:#eaeaea;--muted:#b9b9c2;--accent:#4dd0ff;--danger:#ff4d6d}
+:root{--bg:#0b1220;--panel:#12141c;--card:#1a1e29;--text:#eaeaea;--muted:#b9b9c2;--accent:#4dd0ff;--danger:#ff4d6d;--warn:#ffb703}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.35 system-ui,Segoe UI,Roboto,Arial}
 .app{display:grid;grid-template-columns:1fr 420px;gap:12px;height:100vh;padding:12px;transition:grid-template-columns .25s ease}
@@ -43,11 +43,13 @@ input[type=range]{width:180px}
 .map-badge{position:absolute;left:58px;top:10px;background:rgba(18,18,22,.9);color:#fff;border:1px solid rgba(255,255,255,.2);padding:6px 8px;border-radius:8px;font-size:12px;z-index:650;pointer-events:none}
 .leaflet-top.leaflet-left .leaflet-control-zoom{margin-top:10px;margin-left:10px}
 
+/* Toolbar on map */
 .toolbar{position:absolute;right:12px;top:12px;z-index:701;display:flex;flex-direction:column;gap:8px}
 .toolbtn{background:rgba(255,255,255,.95);color:#111;border:0;border-radius:10px;padding:8px 10px;font-weight:800;cursor:pointer;box-shadow:0 4px 10px rgba(0,0,0,.3)}
 
 .fab{position:absolute;right:12px;bottom:12px;z-index:700;background:#fff;color:#111;border-radius:999px;padding:10px 12px;box-shadow:0 4px 12px rgba(0,0,0,.35);cursor:pointer;font-weight:800}
 
+/* HUD */
 #speedHUD{position:fixed;left:0;right:0;bottom:0;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(10,15,24,.92);backdrop-filter:blur(3px);z-index:9000}
 .speedWrap{display:flex;flex-direction:column;align-items:center;gap:8px}
 .speedVal{font-size:64px;line-height:1;font-weight:900}
@@ -94,6 +96,7 @@ input[type=range]{width:180px}
         <button id="btnGeo" class="btn" type="button">📍 Me</button>
         <button id="btnPin" class="btn ghost" type="button">📌 Pin</button>
         <button id="btnRivers" class="btn ghost" type="button">🚧 Rivers</button>
+        <button id="btnReset" class="btn ghost" type="button" title="Clear saved track & settings">♻ Reset</button>
       </div>
       <div class="row">
         <label>Units
@@ -115,9 +118,18 @@ input[type=range]{width:180px}
           <select id="depths" class="btn ghost" title="Depth overlays">
             <option value="none" selected>None</option>
             <option value="global">Global bathymetry</option>
-            <option value="infomar">INFOMAR (Contours IE)</option>
+            <option value="infomar">INFOMAR (IE)</option>
           </select>
         </label>
+        <button id="enableCompass" class="btn ghost" type="button" title="Enable device compass (iOS)">🧭 Enable compass</button>
+      </div>
+      <div class="row">
+        <span id="sysForecast" class="chip">Forecast —</span>
+        <span id="sysTomorrow" class="chip">Tomorrow.io —</span>
+        <span id="sysRadar" class="chip">Radar —</span>
+        <span id="sysTides" class="chip">Tides —</span>
+        <span id="sysRivers" class="chip">Rivers —</span>
+        <span id="sysDepths" class="chip">Depths —</span>
       </div>
     </div>
 
@@ -214,6 +226,7 @@ input[type=range]{width:180px}
   </aside>
 </div>
 
+<!-- HUD -->
 <div id="speedHUD">
   <div class="speedWrap">
     <div class="speedVal" id="hudVal">0</div>
@@ -231,22 +244,23 @@ input[type=range]{width:180px}
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-/* ===== CONFIG ===== */
+/* ========= CONFIG ========= */
 const API_BASE = 'https://legendary-umbrella-8vgu-git-main-ceol-ganeaglas-projects.vercel.app'; // no trailing slash
-const api = p => API_BASE + (p.startsWith('/') ? p : '/' + p);
+const api = p => API_BASE + (p.startsWith('/')? p : '/' + p);
 
-/* Error banner */
+/* ========= ERROR BANNER ========= */
 window.onerror = function(msg){ const e=document.getElementById('err'); e.textContent='Error: '+msg; e.style.display='block'; };
 
 (function(){
   if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-    const e=document.getElementById('err'); e.textContent='Geolocation needs HTTPS (GitHub Pages).'; e.style.display='block';
+    const e=document.getElementById('err'); e.textContent='Geolocation requires HTTPS (GitHub Pages).'; e.style.display='block';
   }
 
   const MAPTILER_KEY='MpDV384cXMNO273WsuTG';
   const $=id=>document.getElementById(id);
-  const el={ app:$('app'), badge:$('badge'),
-    search:$('search'), btnSearch:$('btnSearch'), btnGeo:$('btnGeo'), btnPin:$('btnPin'), btnRivers:$('btnRivers'),
+  const el={
+    app:$('app'), badge:$('badge'),
+    search:$('search'), btnSearch:$('btnSearch'), btnGeo:$('btnGeo'), btnPin:$('btnPin'), btnRivers:$('btnRivers'), btnReset:$('btnReset'),
     units:$('units'), mapStyle:$('mapStyle'),
     play:$('play'), frame:$('frame'), frametime:$('frametime'), opacity:$('opacity'), refresh:$('refresh'),
     nowIcon:$('nowIcon'), temp:$('temp'), wind:$('wind'), precip:$('precip'), cloud:$('cloud'), sun:$('sun'), updated:$('updated'),
@@ -262,10 +276,13 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
     followToggle:$('followToggle'),
     clearTrack:$('clearTrack'), setMOB:$('setMOB'), clearMOB:$('clearMOB'),
     anchorToggle:$('anchorToggle'), anchorRadius:$('anchorRadius'), anchorStatus:$('anchorStatus'),
-    mobInfo:$('mobInfo'), fix:$('fix'), acc:$('acc'), tides:$('tides')
+    mobInfo:$('mobInfo'), fix:$('fix'), acc:$('acc'),
+    tides:$('tides'), enableCompass:$('enableCompass'),
+    sysForecast:$('sysForecast'), sysTomorrow:$('sysTomorrow'), sysRadar:$('sysRadar'), sysTides:$('sysTides'), sysRivers:$('sysRivers'), sysDepths:$('sysDepths')
   };
+  const setChip=(elChip,text,ok)=>{ if(!elChip)return; elChip.textContent=text; elChip.classList.toggle('bad',!ok); };
 
-  /* ===== MAP & BASE LAYERS ===== */
+  /* ===== MAP & LAYERS ===== */
   const map=L.map('map',{zoomControl:true}).setView([53.35,-6.26],8);
   const styles={
     streets:`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`,
@@ -277,39 +294,40 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
 
   let base=L.tileLayer(styles.streets,{attribution:'&copy; OpenStreetMap • &copy; MapTiler'}).addTo(map);
   let baseFailed=false;
-  base.on('tileerror', ()=>{ if (!baseFailed){ baseFailed=true; map.removeLayer(base); base=L.tileLayer(OSM,{attribution:'&copy; OpenStreetMap'}).addTo(map);} });
+  base.on('tileerror', ()=>{ if(!baseFailed){ baseFailed=true; map.removeLayer(base); base=L.tileLayer(OSM,{attribution:'&copy; OpenStreetMap'}).addTo(map); } });
 
-  /* Overlays */
   const markers=L.featureGroup().addTo(map);
   map.createPane('radar'); map.getPane('radar').style.zIndex=450;
   const radarLayer=L.tileLayer('',{pane:'radar',opacity:0.7}).addTo(map);
   const seamarks=L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',{opacity:.95, attribution:'OpenSeaMap'});
 
-  // Depth overlays: global (ocean tiles) or INFOMAR WMS (Ireland contours)
+  // Depth overlays with fallback
   const globalDepths=L.tileLayer(styles.ocean,{opacity:.55, attribution:'MapTiler Ocean'});
-  const infomar=L.tileLayer.wms('https://maps.marine.ie/arcgis/services/Infomar/INFOMAR_Contours/MapServer/WMSServer',{
-    layers:'0,1', format:'image/png', transparent:true, attribution:'INFOMAR (Contours)'
-  }); // ✔︎ WMS works and is CORS-friendly
+  const infomarContours=L.tileLayer.wms('https://maps.marine.ie/arcgis/services/Infomar/INFOMAR_Contours/MapServer/WMSServer', {layers:'0,1',format:'image/png',transparent:true,attribution:'INFOMAR Contours'});
+  const infomarBath=L.tileLayer.wms('https://maps.marine.ie/arcgis/services/INFOMAR/INFOMAR_Bathymetry/MapServer/WMSServer', {layers:'0,1,2,3,4,5',format:'image/png',transparent:true,attribution:'INFOMAR Bathymetry'});
   let depthMode='none';
   function setDepth(mode){
-    if(map.hasLayer(globalDepths))map.removeLayer(globalDepths);
-    if(map.hasLayer(infomar))map.removeLayer(infomar);
+    [globalDepths,infomarContours,infomarBath].forEach(l=>{ if(map.hasLayer(l)) map.removeLayer(l); });
     if(mode==='global')globalDepths.addTo(map);
-    if(mode==='infomar')infomar.addTo(map);
+    if(mode==='infomar'){
+      infomarContours.addTo(map);
+      infomarContours.once('tileerror', ()=>{ map.removeLayer(infomarContours); infomarBath.addTo(map); });
+    }
     depthMode=mode;
     if(el.depths)el.depths.value=mode;
-    if(el.btnToolbarDepth)el.btnToolbarDepth.textContent='🌊 Depths '+(mode==='none'?'—':mode);
+    setChip(el.sysDepths, 'Depths '+(mode==='none'?'—':mode), mode!=='none');
   }
 
-  /* ===== POSITION, TRACK, MOB, ANCHOR ===== */
+  /* ===== REAL-TIME POSITION, HEADING, FOLLOW, MOB, ANCHOR ===== */
   const meLayer=L.layerGroup().addTo(map);
   let meMarker=null, accCircle=null, headLine=null;
   const trackLayer=L.polyline([], {color:'#4dd0ff', weight:3, opacity:0.9}).addTo(map);
   const trackPts=[]; const MAX_PTS=3000;
-  let follow=false, lastFixAt=0;
+  let follow=false, lastFixAt=0, gotFix=false;
   let mobMarker=null, mobLine=null, mobPos=null;
   let anchorCircle=null, anchorPos=null;
-  let prevLL=null; // for heading fallback
+  let prevLL=null;
+  let compassHeading=NaN;
 
   function toRad(x){return x*Math.PI/180} function toDeg(x){return x*180/Math.PI}
   function hav(a,b){const R=6371000, dφ=toRad(b.lat-a.lat), dλ=toRad(b.lng-a.lng), φ1=toRad(a.lat), φ2=toRad(b.lat); const h=Math.sin(dφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2; return 2*R*Math.asin(Math.sqrt(h));}
@@ -320,42 +338,33 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
     lastFixAt=Date.now();
     const here={lat,lng:lon};
 
-    const icon = L.divIcon({className:'', html:`<div style="width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid #36f;box-shadow:0 0 0 2px rgba(77,208,255,.4);"></div>`});
-    if(!meMarker){ meMarker=L.marker(here,{icon}).addTo(meLayer); } else meMarker.setLatLng(here);
+    if(!meMarker){
+      const icon=L.divIcon({className:'', html:`<div style="width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid #36f;box-shadow:0 0 0 2px rgba(77,208,255,.4);"></div>`});
+      meMarker=L.marker(here,{icon}).addTo(meLayer);
+    } else meMarker.setLatLng(here);
 
     if (!accCircle) { accCircle=L.circle(here,{radius:accuracy||0, color:'#36f', fillColor:'#36f', fillOpacity:.08, weight:1}).addTo(meLayer); }
     accCircle.setLatLng(here).setRadius(accuracy||0);
 
-    // choose heading: device heading or derived from last two fixes
-    let hdg = (Number.isFinite(heading) ? heading : (prevLL ? brg(prevLL, here) : NaN));
+    let hdg = Number.isFinite(heading) ? heading : (Number.isFinite(compassHeading) ? compassHeading : (prevLL ? brg(prevLL, here) : NaN));
     if(!headLine) headLine=L.polyline([here,here],{color:'#36f',weight:2,opacity:.8,dashArray:'4,6'}).addTo(meLayer);
-    const ahead = project(lat, lon, Number.isFinite(hdg)?hdg:0, 300);
-    headLine.setLatLngs([here, ahead]);
+    headLine.setLatLngs([here, project(lat, lon, Number.isFinite(hdg)?hdg:0, 300)]);
 
     if (spd>0.5 || (accuracy!=null && accuracy<20)) {
-      trackPts.push([lat,lon]);
-      if(trackPts.length>MAX_PTS) trackPts.shift();
-      trackLayer.setLatLngs(trackPts);
+      trackPts.push([lat,lon]); if(trackPts.length>MAX_PTS) trackPts.shift(); trackLayer.setLatLngs(trackPts);
       try{ localStorage.setItem('cge_track', JSON.stringify(trackPts.slice(-1000))); }catch(e){}
     }
-
     if(follow){ map.panTo(here,{animate:false}); }
     if (el.fix) el.fix.textContent = '📶 fix ' + new Date(lastFixAt).toLocaleTimeString();
     if (el.acc) el.acc.textContent = '🎯 acc ' + (accuracy!=null? Math.round(accuracy)+'m' : '—');
     prevLL = here;
   }
 
-  function setFollow(on){
-    follow=!!on;
-    if(el.followToggle) el.followToggle.checked=follow;
-    if(el.btnToolbarFollow) el.btnToolbarFollow.textContent = follow? '📍 Follow ✓' : '📍 Follow';
-  }
+  function setFollow(on){ follow=!!on; if(el.followToggle) el.followToggle.checked=follow; if(el.btnToolbarFollow) el.btnToolbarFollow.textContent=follow?'📍 Follow ✓':'📍 Follow'; }
   map.on('dragstart', ()=> setFollow(false));
 
   function setMOB(lat,lon){
-    mobPos={lat,lng:lon};
-    if(mobMarker) map.removeLayer(mobMarker);
-    if(mobLine) map.removeLayer(mobLine);
+    mobPos={lat,lng:lon}; if(mobMarker) map.removeLayer(mobMarker); if(mobLine) map.removeLayer(mobLine);
     mobMarker=L.marker(mobPos,{title:'MOB'}).addTo(map).bindPopup('🆘 MOB<br>'+lat.toFixed(5)+', '+lon.toFixed(5)+'<br>'+new Date().toLocaleTimeString());
     mobLine=L.polyline([{lat, lng:lon}, mobPos],{color:'#ff4d6d',weight:2,opacity:.9}).addTo(map);
     if(el.mobInfo) el.mobInfo.textContent='MOB set';
@@ -363,51 +372,62 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
   function clearMOB(){ if(mobMarker){map.removeLayer(mobMarker); mobMarker=null;} if(mobLine){map.removeLayer(mobLine); mobLine=null;} mobPos=null; if(el.mobInfo) el.mobInfo.textContent='MOB —'; }
 
   function setAnchor(lat,lon,rad){
-    anchorPos={lat,lng:lon};
-    if(anchorCircle) map.removeLayer(anchorCircle);
-    anchorCircle=L.circle(anchorPos,{radius:rad,color:'#ffb703',fillColor:'#ffb703',fillOpacity:.08,weight:1}).addTo(map);
+    anchorPos={lat,lng:lon}; if(anchorCircle) map.removeLayer(anchorCircle);
+    anchorCircle=L.circle(anchorPos,{radius:rad,color:'var(--warn)',fillColor:'var(--warn)',fillOpacity:.08,weight:1}).addTo(map);
     el.anchorStatus.textContent=`Anchored • ${rad} m`;
   }
   function clearAnchor(){ if(anchorCircle){map.removeLayer(anchorCircle); anchorCircle=null;} anchorPos=null; el.anchorStatus.textContent='—'; el.anchorToggle.checked=false; }
   function checkAnchor(here){
     if(!anchorPos || !anchorCircle) return;
-    const dist = hav(anchorPos, here);
-    const rad = anchorCircle.getRadius();
-    if (dist>rad){
-      const e=document.getElementById('err'); e.textContent=`⚠︎ Anchor alarm: drift ${Math.round(dist)} m > ${Math.round(rad)} m`; e.style.display='block';
-      e.style.background='#b00020';
-    }
+    const dist = hav(anchorPos, here), rad = anchorCircle.getRadius();
+    if (dist>rad){ const e=document.getElementById('err'); e.textContent=`⚠︎ Anchor alarm: drift ${Math.round(dist)} m > ${Math.round(rad)} m`; e.style.display='block'; e.style.background='#b00020'; }
   }
 
-  /* Style switch + quick toggles */
-  el.mapStyle.addEventListener('change', e=>{ const v=e.target.value; if(base) map.removeLayer(base); base=L.tileLayer(v==='streets'?styles.streets: v==='outdoor'?styles.outdoor: v==='satellite'?styles.satellite:styles.streets,{attribution:'&copy; OpenStreetMap • &copy; MapTiler'}).addTo(map); });
+  /* ===== COMPASS (deviceorientation) ===== */
+  function onDO(ev){
+    let h = ev.webkitCompassHeading;
+    if (!h && ev.alpha!=null) { h = 360 - ev.alpha; }
+    if (Number.isFinite(h)) { compassHeading = h; el.heading.textContent='🧭 '+Math.round(h)+'°'; }
+  }
+  function armCompass(){
+    if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function'){
+      DeviceOrientationEvent.requestPermission().then(state=>{
+        if(state==='granted'){ window.addEventListener('deviceorientationabsolute', onDO, true); window.addEventListener('deviceorientation', onDO, true); }
+      }).catch(()=>{});
+    } else if (window.DeviceOrientationEvent){
+      window.addEventListener('deviceorientationabsolute', onDO, true);
+      window.addEventListener('deviceorientation', onDO, true);
+    }
+  }
+  el.enableCompass?.addEventListener('click', armCompass);
+
+  /* ===== UI toggles ===== */
+  el.mapStyle.addEventListener('change', e=>{ const v=e.target.value; if(base) map.removeLayer(base); const src=v==='streets'?styles.streets: v==='outdoor'?styles.outdoor: v==='satellite'?styles.satellite:styles.streets; base=L.tileLayer(src,{attribution:'&copy; OpenStreetMap • &copy; MapTiler'}).addTo(map); });
   function setSeamarks(on){ if(on){ seamarks.addTo(map);} else { if(map.hasLayer(seamarks)) map.removeLayer(seamarks);} el.seamarksToggle.checked=!!on; }
   el.seamarksToggle?.addEventListener('change', e=> setSeamarks(e.target.checked));
-  $('btnToolbarSeamark')?.addEventListener('click', ()=> setSeamarks(!map.hasLayer(seamarks)));
   el.depths?.addEventListener('change', e=> setDepth(e.target.value));
-  $('btnToolbarDepth')?.addEventListener('click', ()=>{ const next = depthMode==='none'?'global':depthMode==='global'?'infomar':'none'; setDepth(next); });
+  el.btnToolbarDepth?.addEventListener('click', ()=>{ const next = depthMode==='none'?'global':depthMode==='global'?'infomar':'none'; setDepth(next); });
+  el.btnToolbarSeamark?.addEventListener('click', ()=> setSeamarks(!map.hasLayer(seamarks)));
   el.btnRivers?.addEventListener('click', ()=>{ el.wwToggle.checked=true; if(!map.hasLayer(ww.layer)) ww.layer.addTo(map); el.wwFilter.value='all'; loadWaterways(); });
-  $('btnToolbarRivers')?.addEventListener('click', ()=> el.btnRivers.click());
-  $('btnToolbarFollow')?.addEventListener('click', ()=> setFollow(!follow));
-  $('btnToolbarMOB')?.addEventListener('click', ()=> el.setMOB.click());
-  $('btnToolbarAnchor')?.addEventListener('click', ()=>{ el.anchorToggle.checked = !el.anchorToggle.checked; el.anchorToggle.dispatchEvent(new Event('change')); });
-
-  /* Fullscreen */
+  el.btnToolbarRivers?.addEventListener('click', ()=> el.btnRivers.click());
+  el.btnToolbarFollow?.addEventListener('click', ()=> setFollow(!follow));
+  el.btnToolbarMOB?.addEventListener('click', ()=> el.setMOB.click());
+  el.btnToolbarAnchor?.addEventListener('click', ()=>{ el.anchorToggle.checked=!el.anchorToggle.checked; el.anchorToggle.dispatchEvent(new Event('change')); });
   function toggleFull(){ el.app.classList.toggle('full'); setTimeout(()=>map.invalidateSize(),240); }
-  $('btnFull')?.addEventListener('click', toggleFull);
+  el.btnFull?.addEventListener('click', toggleFull);
+  el.btnReset?.addEventListener('click', ()=>{ localStorage.removeItem('cge_track'); location.reload(); });
 
   /* ===== WEATHER (Open-Meteo) ===== */
-  let speedUnit='kmh', lastSpeedMs=0, maxSpeed=0, gpsWatchId=null, gotFix=false, radarTimer=null;
+  let speedUnit='kmh', lastSpeedMs=0, maxSpeed=0, gpsWatchId=null, radarTimer=null;
   const toF=c=>Math.round(c*9/5+32), msToMph=ms=>Math.round(ms*2.23694), mmToIn=mm=>Math.round(ms/25.4*100)/100, msToKn=ms=>Math.round(ms*1.94384);
   const fmtSpeed=ms=>{ ms=(ms==null||isNaN(ms))?0:ms; if(speedUnit==='kmh')return Math.round(ms*3.6)+' km/h'; if(speedUnit==='mph')return Math.round(ms*2.23694)+' mph'; return msToKn(ms)+' knots'; };
   const iconFor=()=> '☁';
   function setMarker(lat,lon,label){ markers.clearLayers(); L.marker([lat,lon]).addTo(markers).bindPopup(label||'Here').openPopup(); }
-
   el.units.addEventListener('change', ()=>{ const c=map.getCenter(); updateAll(c.lat,c.lng,'Updated units'); });
 
   function updateAll(lat,lon,label){
     el.badge.textContent=`${label||'Here'} • ${lat.toFixed(3)}, ${lon.toFixed(3)}`;
-    updateForecast(lat,lon).then(()=>{ if(el.useTomorrow?.checked && !el.useTomorrow.disabled) updateTomorrow(lat,lon); });
+    updateForecast(lat,lon).then(ok=>{ setChip(el.sysForecast,'Forecast '+(ok?'ok':'err'),ok); if(el.useTomorrow?.checked && !el.useTomorrow.disabled) updateTomorrow(lat,lon); });
     loadTides(lat,lon);
   }
 
@@ -429,57 +449,48 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
       el.sun.textContent=(sunrise&&sunset)?`Sunrise ${new Date(sunrise).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} / Sunset ${new Date(sunset).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`:'Sunrise — / Sunset —';
       el.updated.textContent='Updated '+new Date().toLocaleTimeString();
 
+      // Hourly / Daily
       el.hourly.innerHTML=''; const H=Math.min(24,(j?.hourly?.time||[]).length);
       for(let i=0;i<H;i++){ const ti=j.hourly.time[i].slice(11,16), tc=j.hourly.temperature_2m[i], pp=j.hourly.precipitation[i];
-        const div=document.createElement('div'); div.className='hour';
-        div.innerHTML=`${ti}<div class="ico">☁</div>${metric?Math.round(tc)+'°C':toF(tc)+'°F'}<br>${metric?pp+' mm':mmToIn(pp)+' in'}`;
-        el.hourly.appendChild(div);
-      }
+        const div=document.createElement('div'); div.className='hour'; div.innerHTML=`${ti}<div class="ico">☁</div>${metric?Math.round(tc)+'°C':toF(tc)+'°F'}<br>${metric?pp+' mm':mmToIn(pp)+' in'}`; el.hourly.appendChild(div); }
       el.daily.innerHTML=''; const D=(j?.daily?.time||[]).length;
-      for(let d=0; d<D; d++){ const wd=new Date(j.daily.time[d]).toLocaleDateString(undefined,{weekday:'short'});
-        const tmax=j.daily.temperature_2m_max[d], tmin=j.daily.temperature_2m_min[d], pr=j.daily.precipitation_sum?.[d]??0;
-        const row=document.createElement('div'); row.className='day';
-        row.innerHTML=`${wd}<div class="ico">☁</div>${metric?Math.round(tmax)+'°C / '+Math.round(tmin)+'°C':toF(tmax)+'°F / '+toF(tmin)+'°F'}<br>${metric?pr+' mm':mmToIn(pr)+' in'}`;
-        el.daily.appendChild(row);
-      }
-    }).catch(()=>{ el.updated.textContent='Live forecast failed'; });
+      for(let d=0; d<D; d++){ const wd=new Date(j.daily.time[d]).toLocaleDateString(undefined,{weekday:'short'}); const tmax=j.daily.temperature_2m_max[d], tmin=j.daily.temperature_2m_min[d], pr=j.daily.precipitation_sum?.[d]??0;
+        const row=document.createElement('div'); row.className='day'; row.innerHTML=`${wd}<div class="ico">☁</div>${metric?Math.round(tmax)+'°C / '+Math.round(tmin)+'°C':toF(tmax)+'°F / '+toF(tmin)+'°F'}<br>${metric?pr+' mm':mmToIn(pr)+' in'}`; el.daily.appendChild(row); }
+      return true;
+    }).catch(()=>{ el.updated.textContent='Live forecast failed'; return false; });
   }
 
-  /* ===== Tomorrow.io via proxy ===== */
-  function markTio(state,msg){
-    if(state==='ok'){ el.useTomorrow.disabled=false; el.tomorrowWrap.classList.remove('disabled'); el.tioNote.textContent=''; }
-    else { el.useTomorrow.disabled=true; el.tomorrowWrap.classList.add('disabled'); el.tioNote.textContent=msg||'(proxy offline)'; }
-  }
-  fetch(api('/api/tomorrow?lat=53.35&lon=-6.26'),{cache:'no-store'})
-    .then(r=>{ if(r.ok) markTio('ok'); else markTio('err','HTTP '+r.status); })
-    .catch(()=> markTio('err','no response'));
+  /* ===== Tomorrow.io via proxy (hardened) ===== */
+  function markTio(state,msg){ if(state==='ok'){ el.useTomorrow.disabled=false; el.tomorrowWrap.classList.remove('disabled'); el.tioNote.textContent=''; } else { el.useTomorrow.disabled=true; el.tomorrowWrap.classList.add('disabled'); el.tioNote.textContent=msg||'(proxy offline)'; } }
+  fetch(api('/api/tomorrow?lat=53.35&lon=-6.26'),{cache:'no-store'}).then(r=>{ if(r.ok) markTio('ok'); else markTio('err','HTTP '+r.status); }).catch(()=> markTio('err','no response'));
 
   function updateTomorrow(lat,lon){
     if (!el.useTomorrow || !el.useTomorrow.checked || el.useTomorrow.disabled) return;
     const metric=(el.units.value==='metric'); const u = metric ? 'metric' : 'imperial';
-    fetch(api(`/api/tomorrow?lat=${lat}&lon=${lon}&units=${u}`), { cache:'no-store' })
-      .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    const controller=new AbortController(); const t=setTimeout(()=>controller.abort(), 6000);
+    fetch(api(`/api/tomorrow?lat=${lat}&lon=${lon}&units=${u}`), { cache:'no-store', signal:controller.signal })
+      .then(r=>{ clearTimeout(t); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
       .then(j=>{
-        const v=j?.data?.values||{}; const ws=v.windSpeed; const wd=v.windDirection; const gust=v.windGust; const wave=v.waveHeight;
+        const v=j?.data?.values||{}; const ws=v.windSpeed, wd=v.windDirection, gust=v.windGust, wave=v.waveHeight;
         let txt = metric ? (`Wind ${ws!=null?Math.round(ws):'—'} m/s`) : (`Wind ${ws!=null?Math.round(ws*2.23694):'—'} mph`);
-        if (wd!=null) txt += ` ${Math.round(wd)}°`;
-        if (gust!=null) txt += metric? `, Gust ${Math.round(gust)} m/s` : `, Gust ${Math.round(gust*2.23694)} mph`;
-        if (wave!=null) txt += `, Wave ${wave.toFixed(1)} m`;
-        el.wind.dataset.source='tomorrow'; el.wind.textContent = txt+' (Tomorrow.io)';
-      }).catch(()=>{ /* fallback stays */ });
+        if (wd!=null) txt += ` ${Math.round(wd)}°`; if (gust!=null) txt += metric? `, Gust ${Math.round(gust)} m/s` : `, Gust ${Math.round(gust*2.23694)} mph`; if (wave!=null) txt += `, Wave ${wave.toFixed(1)} m`;
+        el.wind.dataset.source='tomorrow'; el.wind.textContent=txt+' (Tomorrow.io)'; setChip(el.sysTomorrow,'Tomorrow.io ok',true);
+      })
+      .catch(()=>{ setChip(el.sysTomorrow,'Tomorrow.io err',false); /* keep Open-Meteo wind */ });
   }
   el.useTomorrow?.addEventListener('change', ()=>{ const c=map.getCenter(); updateAll(c.lat,c.lng,'Updated wind source'); });
 
-  /* ===== OSM Overpass Waterways ===== */
+  /* ===== OSM Overpass with endpoint rotation ===== */
   const ww = { layer:L.featureGroup().addTo(map), busy:false, lastFetchAt:0 };
   ww.layer.remove();
-  function wwEmoji(tags){ if (tags.waterway === 'lock_gate') return '🗝️'; if (tags.waterway === 'weir') return '🌊';
-    if (tags.waterway === 'dam') return '🧱'; if (tags.leisure === 'slipway') return '🛶'; if (tags.leisure === 'marina' || tags['seamark:type'] === 'mooring') return '⛵';
-    if (tags.man_made === 'pier' || tags.man_made === 'jetty') return '🛳️'; if (tags.amenity === 'fuel') return '⛽'; if (tags.harbour === 'yes' || tags['seamark:type'] === 'harbour') return '⚓';
-    if (tags.natural === 'sand' || tags.natural === 'beach') return '🏖️'; return '📍'; }
+  const OVERPASS_URLS = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass.openstreetmap.ru/api/interpreter'
+  ];
+  function wwEmoji(tags){ if (tags.waterway === 'lock_gate') return '🗝️'; if (tags.waterway === 'weir') return '🌊'; if (tags.waterway === 'dam') return '🧱'; if (tags.leisure === 'slipway') return '🛶'; if (tags.leisure === 'marina' || tags['seamark:type'] === 'mooring') return '⛵'; if (tags.man_made === 'pier' || tags.man_made === 'jetty') return '🛳️'; if (tags.amenity === 'fuel') return '⛽'; if (tags.harbour === 'yes' || tags['seamark:type'] === 'harbour') return '⚓'; if (tags.natural === 'sand' || tags.natural === 'beach') return '🏖️'; return '📍'; }
   function wwFilters(){
-    const v = el.wwFilter?.value || 'all'; const parts = [];
-    const add = s => parts.push(`node${s}(BBOX);`,`way${s}(BBOX);`,`relation${s}(BBOX);`);
+    const v = el.wwFilter?.value || 'all'; const parts = []; const add = s => parts.push(`node${s}(BBOX);`,`way${s}(BBOX);`,`relation${s}(BBOX);`);
     if (v==='all' || v==='locks')   add('["waterway"~"lock_gate|weir|dam"]');
     if (v==='all' || v==='slipways')add('["leisure"="slipway"]');
     if (v==='all' || v==='marinas') { add('["leisure"="marina"]'); add('["seamark:type"="mooring"]'); }
@@ -491,10 +502,16 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
   function popupHTML(tags){
     const type = tags.waterway || tags.leisure || tags.man_made || tags.amenity || tags.harbour || tags['seamark:type'] || tags.natural || 'poi';
     const name = tags.name || '(no name)'; const website = tags.website || tags.contact_website;
-    return `<div style="min-width:200px"><div style="font-size:18px">${wwEmoji(tags)} ${name}</div>
-      <div style="font-size:12px;color:#bbb">${type}</div>${tags.operator ? `<div>Operator: ${tags.operator}</div>`:''}
-      ${tags.opening_hours ? `<div>Hours: ${tags.opening_hours}</div>`:''}${website ? `<div><a href="${website}" target="_blank" rel="noopener">Website</a></div>`:''}
-      <div class="sub">OSM data (may be incomplete)</div></div>`;
+    return `<div style="min-width:200px"><div style="font-size:18px">${wwEmoji(tags)} ${name}</div><div style="font-size:12px;color:#bbb">${type}</div>${tags.operator ? `<div>Operator: ${tags.operator}</div>`:''}${tags.opening_hours ? `<div>Hours: ${tags.opening_hours}</div>`:''}${website ? `<div><a href="${website}" target="_blank" rel="noopener">Website</a></div>`:''}<div class="sub">OSM data (may be incomplete)</div></div>`;
+  }
+  async function overpassFetch(query){
+    for (const url of OVERPASS_URLS){
+      try{
+        const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'data='+encodeURIComponent(query)});
+        if(r.ok) return await r.json();
+      }catch(e){}
+    }
+    throw new Error('All Overpass endpoints failed');
   }
   async function loadWaterways(){
     if (!el.wwToggle?.checked) return;
@@ -503,8 +520,7 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
     const b = map.getBounds(); const bbox = `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`;
     const overpassQL = `[out:json][timeout:25];(${wwFilters().join('\n').replaceAll('BBOX', bbox)});out body center tags;>;out skel qt;`;
     try{
-      const r = await fetch('https://overpass-api.de/api/interpreter',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'data='+encodeURIComponent(overpassQL)});
-      const j = await r.json();
+      const j=await overpassFetch(overpassQL);
       ww.layer.clearLayers();
       (j.elements||[]).forEach(e=>{
         if (!e.tags) return;
@@ -519,8 +535,8 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
         ww.layer.addLayer(L.marker([lat,lon], { title:e.tags.name||'' }).bindPopup(popupHTML(e.tags)));
       });
       if (!map.hasLayer(ww.layer)) ww.layer.addTo(map);
-      el.wwStatus.textContent = `${ww.layer.getLayers().length} features`;
-    }catch(err){ console.warn('Overpass failed', err); el.wwStatus.textContent='Failed'; }
+      el.wwStatus.textContent = `${ww.layer.getLayers().length} features`; setChip(el.sysRivers, 'Rivers ok', true);
+    }catch(err){ el.wwStatus.textContent='Failed'; setChip(el.sysRivers,'Rivers err',false); }
     finally { ww.busy=false; }
   }
   el.wwToggle?.addEventListener('change', ()=>{ if (el.wwToggle.checked) { if (!map.hasLayer(ww.layer)) ww.layer.addTo(map); loadWaterways(); } else { if (map.hasLayer(ww.layer)) map.removeLayer(ww.layer); el.wwStatus.textContent='—'; } });
@@ -532,11 +548,11 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
   function loadRadar(){
     fetch('https://api.rainviewer.com/public/weather-maps.json',{cache:'no-store'})
       .then(r=>r.json()).then(j=>{
-        const arr=[...(j?.radar?.past||[]),...(j?.radar?.nowcast||[])];
-        RV.frames=arr; el.frame.max=Math.max(arr.length-1,0);
-        if(!arr.length){ el.frametime.textContent='No radar'; radarLayer.setUrl(''); return; }
-        setRadar(arr.length-1);
-      }).catch(()=>{ el.frametime.textContent='Radar error'; });
+        RV.frames=[...(j?.radar?.past||[]),...(j?.radar?.nowcast||[])];
+        el.frame.max=Math.max(RV.frames.length-1,0);
+        if(!RV.frames.length){ el.frametime.textContent='No radar'; radarLayer.setUrl(''); setChip(el.sysRadar,'Radar —',false); return; }
+        setRadar(RV.frames.length-1); setChip(el.sysRadar,'Radar ok',true);
+      }).catch(()=>{ el.frametime.textContent='Radar error'; setChip(el.sysRadar,'Radar err',false); });
   }
   function setRadar(i){
     if(!RV.frames.length) return;
@@ -562,7 +578,7 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
   el.btnGeo.addEventListener('click', ()=>{ if(!navigator.geolocation)return; navigator.geolocation.getCurrentPosition(pos=>{ const {latitude:lat,longitude:lon}=pos.coords; map.setView([lat,lon],11); setMarker(lat,lon,'You are here'); updateAll(lat,lon,'My location'); }); });
   el.btnPin.addEventListener('click', ()=>{ const c=map.getCenter(); setMarker(c.lat,c.lng,'Pinned point'); updateAll(c.lat,c.lng,'Pinned point'); });
 
-  /* ===== GPS (speed HUD + live) ===== */
+  /* ===== GPS / HUD ===== */
   function updateSpeedUI(hdg){
     el.gps.textContent='⏱ '+fmtSpeed(lastSpeedMs);
     const val = speedUnit==='kmh'? lastSpeedMs*3.6 : speedUnit==='mph'? lastSpeedMs*2.23694 : lastSpeedMs*1.94384;
@@ -574,25 +590,20 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
     el.hudMax.textContent='🏁 Max '+(speedUnit==='kmh'?Math.round(maxSpeed*3.6):speedUnit==='mph'?Math.round(maxSpeed*2.23694):Math.round(msToKn(maxSpeed)));
     el.toggleSpeed.textContent='Units: '+(speedUnit==='kmh'?'km/h':speedUnit==='mph'?'mph':'knots');
     el.max.textContent='🏁 Max: '+fmtSpeed(maxSpeed);
-    el.heading.textContent='🧭 '+(isFinite(hdg)?Math.round(hdg)+'°':'—°');
+    if(Number.isFinite(hdg)) el.heading.textContent='🧭 '+Math.round(hdg)+'°';
   }
   function startGPS(){
     if(!navigator.geolocation){ el.gps.textContent='⏱ GPS not supported'; return; }
     if(gpsWatchId!==null) return;
     gpsWatchId=navigator.geolocation.watchPosition(pos=>{
       const {latitude:lat, longitude:lon, speed, heading, accuracy}=pos.coords;
-      lastSpeedMs=(speed==null)?0:speed;
-      if(lastSpeedMs>maxSpeed) maxSpeed=lastSpeedMs;
+      lastSpeedMs=(speed==null)?0:speed; if(lastSpeedMs>maxSpeed) maxSpeed=lastSpeedMs;
       const here={lat, lng:lon};
-      const fallbackHeading = (prevLL ? brg(prevLL, here) : NaN);
+      const fallbackHeading = (Number.isFinite(compassHeading)? compassHeading : (prevLL ? brg(prevLL, here) : NaN));
       updateSpeedUI(Number.isFinite(heading)?heading:fallbackHeading);
       updateMe(lat,lon,accuracy,heading,lastSpeedMs);
       el.badge.textContent=`${lat.toFixed(3)}, ${lon.toFixed(3)} • ${fmtSpeed(lastSpeedMs)}`;
-      if(mobPos){
-        const d= hav(here,mobPos), b= brg(here,mobPos);
-        if(mobLine) mobLine.setLatLngs([here,mobPos]);
-        if(el.mobInfo) el.mobInfo.textContent = `MOB: ${Math.round(d)} m @ ${Math.round(b)}°`;
-      }
+      if(mobPos){ const d= hav(here,mobPos), b= brg(here,mobPos); if(mobLine) mobLine.setLatLngs([here,mobPos]); if(el.mobInfo) el.mobInfo.textContent = `MOB: ${Math.round(d)} m @ ${Math.round(b)}°`; }
       checkAnchor(here);
       if(!gotFix){ gotFix=true; map.setView([lat,lon],13); setMarker(lat,lon,'You are here'); updateAll(lat,lon,'My location'); }
       prevLL = here;
@@ -604,26 +615,25 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
   $('speedFab').addEventListener('click', ()=>el.toggleHUD.click());
   $('btnToolbarSpeed')?.addEventListener('click', ()=>el.toggleHUD.click());
 
-  /* ===== TIDES (WorldTides) ===== *
+  /* ===== TIDES (WorldTides) ===== */
   async function loadTides(lat,lon){
     if(!el.tides) return;
     el.tides.textContent='Loading tides…';
     try{
-      const url=`https://www.worldtides.info/api/v3?extremes&lat=${lat}&lon=${lon}&length=48&key=demo`;
-      const r=await fetch(url,{cache:'no-store'}); const j=await r.json();
-      const list=j?.extremes||[]; if(!list.length){ el.tides.textContent='No tide data'; return; }
+      const r=await fetch(`https://www.worldtides.info/api/v3?extremes&lat=${lat}&lon=${lon}&length=48&key=demo`,{cache:'no-store'});
+      const j=await r.json(); const list=j?.extremes||[];
+      if(!list.length){ el.tides.textContent='No tide data'; setChip(el.sysTides,'Tides —',false); return; }
       const now=Date.now()/1000; const next=list.filter(ex=>ex.dt>=now).slice(0,4);
-      el.tides.innerHTML=next.map(ex=>{ const when=new Date(ex.dt*1000);
-        const hh=when.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); const dd=when.toLocaleDateString([],{weekday:'short'});
-        const h=(ex.height!=null)? ex.height.toFixed(1)+' m':''; return `${dd} ${hh} — <b>${ex.type}</b> ${h}`; }).join('<br>');
-    }catch(e){ el.tides.textContent='Tide fetch failed'; }
+      el.tides.innerHTML=next.map(ex=>{ const when=new Date(ex.dt*1000); const hh=when.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); const dd=when.toLocaleDateString([],{weekday:'short'}); const h=(ex.height!=null)? ex.height.toFixed(1)+' m':''; return `${dd} ${hh} — <b>${ex.type}</b> ${h}`; }).join('<br>');
+      setChip(el.sysTides,'Tides ok',true);
+    }catch(e){ el.tides.textContent='Tide fetch failed'; setChip(el.sysTides,'Tides err',false); }
   }
 
   /* ===== Radar init ===== */
   loadRadar(); setInterval(loadRadar,5*60*1000);
 
   /* ===== INIT ===== */
-  startGPS();
+  startGPS(); armCompass();
   try{ const saved=JSON.parse(localStorage.getItem('cge_track')||'[]'); if(Array.isArray(saved)&&saved.length){ saved.forEach(p=>trackPts.push(p)); trackLayer.setLatLngs(trackPts); } }catch(e){}
   if(navigator.geolocation){
     navigator.geolocation.getCurrentPosition(
@@ -632,13 +642,13 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
     );
   } else updateAll(53.35,-6.26,'Dublin area');
 
-  /* Toolbar extras */
+  // On-water UI
+  el.followToggle?.addEventListener('change', e=> setFollow(e.target.checked));
   el.clearTrack?.addEventListener('click', ()=>{ trackPts.length=0; trackLayer.setLatLngs(trackPts); localStorage.removeItem('cge_track'); });
   el.setMOB?.addEventListener('click', ()=>{ if(meMarker){ const ll=meMarker.getLatLng(); setMOB(ll.lat,ll.lng); } });
   el.clearMOB?.addEventListener('click', clearMOB);
   el.anchorToggle?.addEventListener('change', e=>{ if(e.target.checked){ if(meMarker){ const ll=meMarker.getLatLng(); setAnchor(ll.lat,ll.lng, +el.anchorRadius.value); } else e.target.checked=false; } else clearAnchor(); });
   el.anchorRadius?.addEventListener('input', ()=>{ if(anchorCircle) anchorCircle.setRadius(+el.anchorRadius.value); if(anchorPos) el.anchorStatus.textContent=`Anchored • ${el.anchorRadius.value} m`; });
-  el.btnFull?.addEventListener('click', ()=>{ el.app.classList.toggle('full'); setTimeout(()=>map.invalidateSize(),240); });
 
 })();
 </script>
