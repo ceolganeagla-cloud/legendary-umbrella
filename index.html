@@ -604,7 +604,7 @@ window.onerror = function(msg){ const e=document.getElementById('err'); e.textCo
   $('speedFab').addEventListener('click', ()=>el.toggleHUD.click());
   $('btnToolbarSpeed')?.addEventListener('click', ()=>el.toggleHUD.click());
 
-  /* ===== TIDES (WorldTides) ===== */
+  /* ===== TIDES (WorldTides) ===== *
   async function loadTides(lat,lon){
     if(!el.tides) return;
     el.tides.textContent='Loading tides…';
