@@ -47,6 +47,13 @@
   .speed-read{margin-top:8px;font-size:28px;font-weight:700;text-align:center}
   .units{font-size:12px;color:var(--muted);text-align:center;margin-top:-6px}
   .veh{ filter: drop-shadow(0 0 2px rgba(0,0,0,.6)); }
+
+  /* Debug panel */
+  .debug{font-size:12px;color:var(--muted)}
+  .debug summary{cursor:pointer;user-select:none}
+  .k{color:#8ab4ff}
+  .ok{color:#22c55e}
+  .bad{color:#ef4444}
 </style>
 </head>
 <body>
@@ -70,15 +77,19 @@
         <button id="btnSeamark" class="btn">Seamarks</button>
         <button id="btnAircraft" class="btn">Aircraft</button>
         <button id="btnBoats" class="btn">Boats</button>
-        <button onclick="loadPlanes()">Aircraft</button>
-<button onclick="loadShips()">Boats</button>
-
       </div>
       <div id="map"></div>
       <div class="muted" style="margin-top:6px">
         Basemaps: <span class="chip">OpenStreetMap</span> <span class="chip">Esri World Ocean</span> & overlay
         <span class="chip">OpenSeaMap Seamarks</span>. Ocean basemap shows bathymetry shading; seamarks add buoys, beacons, channels.
       </div>
+      <details class="debug" style="margin-top:8px">
+        <summary>Debug</summary>
+        <div>API base: <span class="k" id="dbgBase">—</span></div>
+        <div>OpenSky URL: <span class="k" id="dbgOpenSky">—</span> <span id="dbgOpenSkyState"></span></div>
+        <div>AIS URL: <span class="k" id="dbgAis">—</span> <span id="dbgAisState"></span></div>
+        <div>Planes: <span class="k" id="dbgPlaneCount">0</span> | Boats: <span class="k" id="dbgBoatCount">0</span></div>
+      </details>
     </div>
 
     <div class="card" id="wxCard" style="margin-top:12px">
@@ -146,6 +157,7 @@ const ON_LOCAL = ['localhost','127.0.0.1'].includes(location.hostname);
 const VERCEL_ORIGIN = 'https://legendary-umbrella-ashen.vercel.app';
 const API_BASE = (ON_VERCEL || ON_LOCAL) ? '' : VERCEL_ORIGIN;
 document.getElementById('apiBaseTxt').textContent = API_BASE || '(same-origin)';
+document.getElementById('dbgBase').textContent = API_BASE || '(same-origin)';
 
 const $ = (id)=>document.getElementById(id);
 const setStatus = (t)=>{$('status').textContent=t;}
@@ -280,12 +292,20 @@ $('btnTrack').onclick = ()=> trackId ? stopTracking() : startTracking();
 let aircraftLayer = L.layerGroup();
 let boatsLayer = L.layerGroup();
 let aircraftTimer = null, boatsTimer = null;
-function makeIcon(color='#aee'){
-  return L.divIcon({
-    className: 'veh',
-    html: `<div style="width:12px;height:12px;border-radius:50%;
-      background:${color};border:2px solid #0a0f15;box-shadow:0 0 6px rgba(255,255,255,.6)"></div>`,
-    iconSize: [12,12], iconAnchor: [6,6]
+
+// icon helpers
+function planeIcon(){
+  return L.icon({
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/3448/3448339.png',
+    iconSize: [20,20],
+    iconAnchor: [10,10]
+  });
+}
+function boatIcon(){
+  return L.icon({
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/77/77521.png',
+    iconSize: [20,20],
+    iconAnchor: [10,10]
   });
 }
 
@@ -294,7 +314,9 @@ async function fetchAircraftBBox(){
   const b = map.getBounds();
   const n=b.getNorth(), s=b.getSouth(), e=b.getEast(), w=b.getWest();
   const url = `${API_BASE}/api/opensky?n=${n}&s=${s}&e=${e}&w=${w}`;
+  $('dbgOpenSky').textContent = url;
   const r = await fetch(url, { cache:'no-store' });
+  $('dbgOpenSkyState').innerHTML = r.ok ? '<span class="ok">✓</span>' : `<span class="bad">✗ ${r.status}</span>`;
   if(!r.ok) throw new Error('opensky '+r.status);
   return r.json();
 }
@@ -303,13 +325,14 @@ async function refreshAircraft(){
     const data = await fetchAircraftBBox();
     aircraftLayer.clearLayers();
     const states = data.states || [];
+    $('dbgPlaneCount').textContent = states.length;
     for(const s of states){
       const callsign = (s[1]||'').trim();
       const lat = s[6], lon = s[5];
       const track = s[10]; // degrees
       const gs = s[9];     // m/s ground speed
       if(lat==null || lon==null) continue;
-      const m = L.marker([lat,lon], { icon: makeIcon('#7dd3fc') })
+      const m = L.marker([lat,lon], { icon: planeIcon() })
         .bindTooltip(`${callsign || 'N/A'}\n${(gs? (gs*1.943844).toFixed(1)+' kn' : '—')} @ ${track==null?'—':Math.round(track)+'°'}`);
       m.addTo(aircraftLayer);
     }
@@ -332,13 +355,17 @@ $('btnAircraft').onclick = toggleAircraft;
 // BOATS via your AIS proxy (requires AIS_PROXY_URL env var on Vercel)
 async function refreshBoats(){
   try{
-    const r = await fetch(`${API_BASE}/api/ais`, { cache: 'no-store' });
+    const url = `${API_BASE}/api/ais`;
+    $('dbgAis').textContent = url;
+    const r = await fetch(url, { cache: 'no-store' });
+    $('dbgAisState').innerHTML = r.ok ? '<span class="ok">✓</span>' : `<span class="bad">✗ ${r.status}</span>`;
     if(!r.ok) throw new Error('ais '+r.status);
     const list = await r.json(); // expect array [{lat,lon,cog,sog,name,mmsi}, ...]
     boatsLayer.clearLayers();
+    $('dbgBoatCount').textContent = Array.isArray(list) ? list.length : 0;
     (list||[]).forEach(v=>{
       if(v.lat==null || v.lon==null) return;
-      const m = L.marker([v.lat, v.lon], { icon: makeIcon('#86efac') })
+      const m = L.marker([v.lat, v.lon], { icon: boatIcon() })
         .bindTooltip(`${v.name||v.mmsi||'Vessel'}\n${v.sog!=null? v.sog+' kn':'—'} @ ${v.cog!=null? Math.round(v.cog)+'°':'—'}`);
       m.addTo(boatsLayer);
     });
@@ -391,50 +418,6 @@ async function boot(){
   }catch(e){
     showErr(`Startup failed: ${e.message}`);
     setStatus('Failed to boot.');
-  }
-}
-async function loadShips() {
-  const res = await fetch(`/api/ais`);
-  const boats = await res.json();
-
-  if (!window.shipLayer) {
-    window.shipLayer = L.layerGroup().addTo(map);
-  } else {
-    window.shipLayer.clearLayers();
-  }
-
-  boats.forEach(b => {
-    L.marker([b.lat, b.lon], {icon: L.icon({
-      iconUrl: "https://cdn-icons-png.flaticon.com/512/77/77521.png",
-      iconSize: [20, 20]
-    })})
-    .bindPopup(`⛵ ${b.name || "Vessel"}<br>SOG: ${b.sog || "?"} kn<br>COG: ${b.cog || "?"}°`)
-    .addTo(window.shipLayer);
-  });
-}
-async function loadPlanes() {
-  const bounds = map.getBounds();
-  const res = await fetch(`/api/opensky?n=${bounds.getNorth()}&s=${bounds.getSouth()}&e=${bounds.getEast()}&w=${bounds.getWest()}`);
-  const data = await res.json();
-
-  if (!window.planeLayer) {
-    window.planeLayer = L.layerGroup().addTo(map);
-  } else {
-    window.planeLayer.clearLayers();
-  }
-
-  if (data.states) {
-    data.states.forEach(f => {
-      const lat = f[6], lon = f[5], callsign = f[1];
-      if (lat && lon) {
-        L.marker([lat, lon], {icon: L.icon({
-          iconUrl: "https://cdn-icons-png.flaticon.com/512/3448/3448339.png",
-          iconSize: [20, 20]
-        })})
-        .bindPopup(`✈️ ${callsign || "Plane"}`)
-        .addTo(window.planeLayer);
-      }
-    });
   }
 }
 
