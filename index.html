@@ -70,6 +70,9 @@
         <button id="btnSeamark" class="btn">Seamarks</button>
         <button id="btnAircraft" class="btn">Aircraft</button>
         <button id="btnBoats" class="btn">Boats</button>
+        <button onclick="loadPlanes()">Aircraft</button>
+<button onclick="loadShips()">Boats</button>
+
       </div>
       <div id="map"></div>
       <div class="muted" style="margin-top:6px">
@@ -389,6 +392,25 @@ async function boot(){
     showErr(`Startup failed: ${e.message}`);
     setStatus('Failed to boot.');
   }
+}
+async function loadShips() {
+  const res = await fetch(`/api/ais`);
+  const boats = await res.json();
+
+  if (!window.shipLayer) {
+    window.shipLayer = L.layerGroup().addTo(map);
+  } else {
+    window.shipLayer.clearLayers();
+  }
+
+  boats.forEach(b => {
+    L.marker([b.lat, b.lon], {icon: L.icon({
+      iconUrl: "https://cdn-icons-png.flaticon.com/512/77/77521.png",
+      iconSize: [20, 20]
+    })})
+    .bindPopup(`⛵ ${b.name || "Vessel"}<br>SOG: ${b.sog || "?"} kn<br>COG: ${b.cog || "?"}°`)
+    .addTo(window.shipLayer);
+  });
 }
 async function loadPlanes() {
   const bounds = map.getBounds();
