@@ -390,6 +390,31 @@ async function boot(){
     setStatus('Failed to boot.');
   }
 }
+async function loadPlanes() {
+  const bounds = map.getBounds();
+  const res = await fetch(`/api/opensky?n=${bounds.getNorth()}&s=${bounds.getSouth()}&e=${bounds.getEast()}&w=${bounds.getWest()}`);
+  const data = await res.json();
+
+  if (!window.planeLayer) {
+    window.planeLayer = L.layerGroup().addTo(map);
+  } else {
+    window.planeLayer.clearLayers();
+  }
+
+  if (data.states) {
+    data.states.forEach(f => {
+      const lat = f[6], lon = f[5], callsign = f[1];
+      if (lat && lon) {
+        L.marker([lat, lon], {icon: L.icon({
+          iconUrl: "https://cdn-icons-png.flaticon.com/512/3448/3448339.png",
+          iconSize: [20, 20]
+        })})
+        .bindPopup(`✈️ ${callsign || "Plane"}`)
+        .addTo(window.planeLayer);
+      }
+    });
+  }
+}
 
 // Ensure Leaflet + DOM are ready
 document.addEventListener('DOMContentLoaded', () => {
