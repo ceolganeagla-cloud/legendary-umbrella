@@ -1,648 +1,161 @@
-# Build a superset HTML that keeps ALL original features and adds:
-# - Depths control (None / Global / INFOMAR) in sidebar + toolbar cycle button
-# - Fullscreen toggle (toolbar)
-# - Tides card (WorldTides demo; degrades gracefully)
-# - Expanded Tomorrow.io wind (direction, gusts, waves) when available
-#
-# Filename preserved: CGE_WeatherMarine_GitHub.html
-
-html = r"""<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Ceol Gan Eagla — Weather & Marine</title>
-
-<!-- Icons / Logo -->
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-
-<style>
-:root{--bg:#0b1220;--panel:#12141c;--card:#1a1e29;--text:#eaeaea;--muted:#b9b9c2;--accent:#4dd0ff}
-*{box-sizing:border-box}
-html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.35 system-ui,Segoe UI,Roboto,Arial}
-.app{display:grid;grid-template-columns:1fr 420px;gap:12px;height:100vh;padding:12px;transition:grid-template-columns .25s ease}
-.app.full{grid-template-columns:1fr}
-.app.full aside{display:none}
-#map{width:100%;height:100%;border-radius:14px;overflow:hidden;position:relative;background:#0a0f18}
-aside{background:var(--panel);border-radius:14px;overflow:auto;padding:12px}
-
-.brand{display:flex;gap:12px;align-items:center;margin-bottom:10px}
-.logo{width:48px;height:48px;border-radius:10px;overflow:hidden;background:#000}
-.logo img{width:100%;height:100%;object-fit:contain;background:#fff}
-h1{margin:0;font-size:18px}
-.sub{color:var(--muted);font-size:12px}
-
-.card{background:var(--card);border-radius:10px;padding:12px;margin-bottom:10px}
-.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.btn{border:0;padding:8px 10px;border-radius:10px;background:#fff;color:#111;font-weight:700;cursor:pointer}
-.btn.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.2)}
-input[type=text],select{background:#0f131c;color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:10px;padding:8px 10px}
-input[type=range]{width:180px}
-.chip{padding:6px 8px;border-radius:10px;background:rgba(255,255,255,.08);font-size:12px}
-
-#hourly{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}
-.hour{min-width:92px;background:rgba(255,255,255,.06);border-radius:10px;padding:8px;text-align:center}
-#daily{display:grid;grid-template-columns:repeat(7,minmax(90px,1fr));gap:8px}
-.day{background:rgba(255,255,255,.06);border-radius:10px;padding:8px;text-align:center}
-
-/* Map UI */
-.map-badge{position:absolute;left:58px;top:10px;background:rgba(18,18,22,.9);color:#fff;border:1px solid rgba(255,255,255,.2);padding:6px 8px;border-radius:8px;font-size:12px;z-index:650;pointer-events:none}
-.leaflet-top.leaflet-left .leaflet-control-zoom{margin-top:10px;margin-left:10px}
-
-/* Floating toolbar for fullscreen/quick toggles */
-.toolbar{position:absolute;right:12px;top:12px;z-index:701;display:flex;flex-direction:column;gap:8px}
-.toolbtn{background:rgba(255,255,255,.95);color:#111;border:0;border-radius:10px;padding:8px 10px;font-weight:800;cursor:pointer;box-shadow:0 4px 10px rgba(0,0,0,.3)}
-
-/* FAB old speed HUD toggle */
-.fab{position:absolute;right:12px;bottom:12px;z-index:700;background:#fff;color:#111;border-radius:999px;padding:10px 12px;box-shadow:0 4px 12px rgba(0,0,0,.35);cursor:pointer;font-weight:800}
-
-/* Speedome HUD */
-#speedHUD{position:fixed;left:0;right:0;bottom:0;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(10,15,24,.92);backdrop-filter:blur(3px);z-index:9000}
-.speedWrap{display:flex;flex-direction:column;align-items:center;gap:8px}
-.speedVal{font-size:64px;line-height:1;font-weight:900}
-.bar{height:6px;width:260px;border-radius:999px;background:#1f2a3a;overflow:hidden}
-.fill{height:100%;width:0;background:linear-gradient(90deg,#36f,#4dd0ff);transition:width .2s}
-.speedUnits{font-size:14px;color:var(--muted)}
-.speedMeta{display:flex;gap:12px;color:#bbb;font-size:12px}
-
-/* Toggles */
-.disabled{opacity:.5;pointer-events:none}
-
-/* Error banner */
-#err{position:fixed;left:8px;right:8px;bottom:8px;background:#b00020;color:#fff;border-radius:8px;padding:8px;display:none;z-index:9999}
-
-@media (max-width:920px){.app{grid-template-columns:1fr;grid-template-rows:52vh 1fr}}
-</style>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Legendary Umbrella — Weather</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="favicon.ico">
+  <meta name="theme-color" content="#0a0f15">
+  <style>
+    html,body{margin:0;padding:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+    .app{min-height:100vh;display:flex;flex-direction:column;background:#0a0f15;color:#e9f0f8}
+    header{padding:14px 16px;border-bottom:1px solid #1b2a3b}
+    main{padding:16px;max-width:960px;margin:0 auto}
+    .card{background:#0f1620;border:1px solid #1b2a3b;border-radius:14px;padding:16px}
+    .muted{opacity:.8}
+    .error{background:#2a0f0f;border-color:#5a1d1d}
+    button{cursor:pointer;border:1px solid #1b2a3b;background:#111a27;color:#e9f0f8;border-radius:10px;padding:10px 14px}
+    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+    .row > * {flex:0 0 auto}
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+  </style>
 </head>
 <body>
-<div class="app" id="app">
-  <div id="map">
-    <div id="badge" class="map-badge">Locating…</div>
+<div class="app">
+  <header>
+    <h1>Legendary Umbrella — Weather</h1>
+    <div class="muted">Ceol Gan Eagla</div>
+  </header>
 
-    <!-- Floating toolbar on map (works in fullscreen) -->
-    <div class="toolbar">
-      <button id="btnFull" class="toolbtn" title="Toggle fullscreen map">🗖 Full</button>
-      <button id="btnToolbarSpeed" class="toolbtn" title="Toggle Speed HUD">⛵ Speed</button>
-      <button id="btnToolbarSeamark" class="toolbtn" title="Toggle seamarks">⚓ Marks</button>
-      <button id="btnToolbarDepth" class="toolbtn" title="Cycle depths">🌊 Depths</button>
-      <button id="btnToolbarRivers" class="toolbtn" title="Waterways POIs">🌊 Rivers</button>
-    </div>
+  <main>
+    <div class="card" id="status">Loading…</div>
 
-    <div id="speedFab" class="fab" title="Speed HUD">⛵</div>
-  </div>
-
-  <aside>
-    <div class="brand">
-      <div class="logo"><img src="logo.png" alt="Logo" onerror="this.onerror=null;this.src='icon-192.png'"></div>
-      <div>
-        <h1>Ceol Gan Eagla — Weather & Marine</h1>
-        <div class="sub">Sources: OSM • MapTiler • RainViewer • Open-Meteo • Tomorrow.io (proxy) • OpenSeaMap • INFOMAR • WorldTides</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="row" style="margin-bottom:8px">
-        <input id="search" type="text" placeholder="Search place or Eircode…" style="flex:1;min-width:220px">
-        <button id="btnSearch" class="btn" type="button">🔍 Search</button>
-        <button id="btnGeo" class="btn" type="button">📍 Me</button>
-        <button id="btnPin" class="btn ghost" type="button">📌 Pin</button>
-      </div>
+    <div class="card" style="margin-top:12px">
       <div class="row">
-        <label>Units
-          <select id="units" class="btn ghost">
-            <option value="metric" selected>Metric (°C, m/s, mm)</option>
-            <option value="imperial">Imperial (°F, mph, in)</option>
-          </select>
-        </label>
-        <label>Map
-          <select id="mapStyle" class="btn ghost">
-            <option value="streets" selected>Streets</option>
-            <option value="outdoor">Outdoor (terrain)</option>
-            <option value="satellite">Satellite</option>
-            <option value="ocean">Ocean (bathymetry)</option>
-          </select>
-        </label>
-        <label><input type="checkbox" id="seamarksToggle"> Seamarks & depth</label>
-        <label>Depths
-          <select id="depths" class="btn ghost" title="Depth overlays">
-            <option value="none" selected>None</option>
-            <option value="global">Global bathymetry</option>
-            <option value="infomar">INFOMAR (Ireland)</option>
-          </select>
-        </label>
+        <button id="btnGeo">Use my location</button>
+        <input id="city" placeholder="Enter city (e.g., Dublin)" />
+        <button id="btnCity">Get weather</button>
       </div>
+      <p class="muted" style="margin-top:8px">This build fetches the API key from Vercel even when hosted on GitHub Pages.</p>
+      <pre class="mono" id="out" style="white-space:pre-wrap;margin-top:12px"></pre>
     </div>
 
-    <div class="card">
-      <div class="row">
-        <button id="play" class="btn ghost" type="button">▶︎</button>
-        <input id="frame" type="range" min="0" max="0" step="1" value="0">
-        <span id="frametime" class="sub">—</span>
-        <label style="margin-left:auto">Radar opacity
-          <input id="opacity" type="range" min="0" max="1" step="0.05" value="0.7">
-        </label>
-        <button id="refresh" class="btn ghost" type="button">↻ Refresh</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="row">
-        <div id="nowIcon" class="chip">☁</div>
-        <div id="temp" class="chip">Temp —</div>
-        <div id="wind" class="chip">Wind —</div>
-        <div id="precip" class="chip">Precip —</div>
-        <div id="cloud" class="chip">Cloud —</div>
-        <div id="sun" class="chip">Sunrise — / Sunset —</div>
-        <div id="updated" class="chip">—</div>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <label id="tomorrowWrap"><input type="checkbox" id="useTomorrow" checked> Use Tomorrow.io wind</label>
-        <span id="tioNote" class="sub" style="margin-left:6px;"></span>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="row" style="margin-bottom:6px">
-        <div class="sub">Waterways info (OSM)</div>
-      </div>
-      <div class="row" style="gap:12px">
-        <label><input type="checkbox" id="wwToggle"> Show waterways POIs</label>
-        <select id="wwFilter" class="btn ghost">
-          <option value="all" selected>All</option>
-          <option value="locks">Locks/Weirs/Dams</option>
-          <option value="slipways">Slipways</option>
-          <option value="marinas">Marinas/Moorings</option>
-          <option value="piers">Piers/Jetties</option>
-          <option value="fuel">Boat Fuel</option>
-        </select>
-        <span id="wwStatus" class="sub">—</span>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="sub" style="margin-bottom:6px">Your GPS (boat) speed</div>
-      <div class="row">
-        <div id="gps" class="chip">⏱ 0 km/h</div>
-        <button id="toggleSpeed" class="btn ghost" type="button">Units: km/h</button>
-        <div id="heading" class="chip">🧭 —°</div>
-        <div id="max" class="chip">🏁 Max: 0</div>
-        <button id="toggleHUD" class="btn" type="button">Speedome HUD</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="sub" style="margin-bottom:6px">Next 24 hours</div>
-      <div id="hourly">Loading…</div>
-    </div>
-    <div class="card">
-      <div class="sub" style="margin-bottom:6px">7-day forecast</div>
-      <div id="daily">Loading…</div>
-    </div>
-
-    <div class="card">
-      <div class="sub" style="margin-bottom:6px">Tides (next highs/lows)</div>
-      <div id="tides">Loading tides…</div>
-    </div>
-  </aside>
+    <div class="card error" id="err" style="display:none;margin-top:12px"></div>
+  </main>
 </div>
 
-<!-- Speedome HUD -->
-<div id="speedHUD">
-  <div class="speedWrap">
-    <div class="speedVal" id="hudVal">0</div>
-    <div class="bar"><div class="fill" id="hudFill"></div></div>
-    <div class="speedUnits" id="hudUnits">km/h</div>
-    <div class="speedMeta">
-      <span id="hudHead">🧭 —°</span>
-      <span id="hudMax">🏁 Max 0</span>
-      <button id="hudToggle" class="btn ghost" type="button">Toggle Units</button>
-    </div>
-  </div>
-</div>
-
-<div id="err"></div>
-
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-/* ================= CONFIG =================
-   Host on GitHub Pages. Tomorrow.io proxy is on Vercel.
+/*
+  === IMPORTANT FIX ===
+  If we are on GitHub Pages (no server), call the Vercel API using an absolute URL.
+  If running on Vercel or localhost, use the relative /api path.
 */
-const API_BASE = 'https://legendary-umbrella-8vgu-git-main-ceol-ganeaglas-projects.vercel.app/';
+const ON_VERCEL = location.hostname.endsWith('.vercel.app');
+const ON_GHPAGES = location.hostname.endsWith('github.io');
+const ON_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 
-/* Error banner */
-window.onerror = function(msg){ const e=document.getElementById('err'); e.textContent='Error: '+msg; e.style.display='block'; };
+const VERCEL_ORIGIN = 'https://legendary-umbrella-ashen.vercel.app'; // your deployment shown in repo
+const API_BASE = (ON_VERCEL || ON_LOCAL) ? '' : VERCEL_ORIGIN; // '' means same-origin (Vercel), absolute for GH Pages
 
-(function(){
-  const MAPTILER_KEY = 'MpDV384cXMNO273WsuTG';
+const els = {
+  status: document.getElementById('status'),
+  out: document.getElementById('out'),
+  err: document.getElementById('err'),
+  btnGeo: document.getElementById('btnGeo'),
+  city: document.getElementById('city'),
+  btnCity: document.getElementById('btnCity'),
+};
 
-  /* Elements */
-  const $ = id => document.getElementById(id);
-  const el = {
-    app:$('app'), badge:$('badge'), speedFab:$('speedFab'),
-    search:$('search'), btnSearch:$('btnSearch'),
-    btnGeo:$('btnGeo'), btnPin:$('btnPin'),
-    units:$('units'), mapStyle:$('mapStyle'),
-    play:$('play'), frame:$('frame'), frametime:$('frametime'),
-    opacity:$('opacity'), refresh:$('refresh'),
-    nowIcon:$('nowIcon'), temp:$('temp'), wind:$('wind'), precip:$('precip'),
-    cloud:$('cloud'), sun:$('sun'), updated:$('updated'),
-    hourly:$('hourly'), daily:$('daily'),
-    gps:$('gps'), toggleSpeed:$('toggleSpeed'), heading:$('heading'), max:$('max'),
-    speedHUD:$('speedHUD'), hudVal:$('hudVal'), hudUnits:$('hudUnits'), hudFill:$('hudFill'),
-    hudHead:$('hudHead'), hudMax:$('hudMax'), hudToggle:$('hudToggle'), toggleHUD:$('toggleHUD'),
-    tomorrowWrap:$('tomorrowWrap'), useTomorrow:$('useTomorrow'), tioNote:$('tioNote'),
-    seamarksToggle:$('seamarksToggle'),
-    wwToggle:$('wwToggle'), wwFilter:$('wwFilter'), wwStatus:$('wwStatus'),
-    // New Depths + toolbar
-    depths:$('depths'), btnFull:$('btnFull'), btnToolbarSpeed:$('btnToolbarSpeed'),
-    btnToolbarSeamark:$('btnToolbarSeamark'), btnToolbarDepth:$('btnToolbarDepth'),
-    btnToolbarRivers:$('btnToolbarRivers'),
-    tides:$('tides')
-  };
+function showError(msg) {
+  els.err.style.display = 'block';
+  els.err.textContent = msg;
+}
+function clearError() {
+  els.err.style.display = 'none';
+  els.err.textContent = '';
+}
 
-  /* ===== MAP & BASELAYERS ===== */
-  const map = L.map('map',{zoomControl:true}).setView([53.35,-6.26],8);
-  const styles = {
-    streets:`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`,
-    outdoor:`https://api.maptiler.com/maps/outdoor-v2/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`,
-    satellite:`https://api.maptiler.com/maps/satellite/{z}/{x}/{y}.jpg?key=${MAPTILER_KEY}`,
-    ocean:`https://api.maptiler.com/maps/ocean/{z}/{x}/{y}.png?key=${MAPTILER_KEY}` // basemap
-  };
-  let base = L.tileLayer(styles.streets,{attribution:'&copy; OpenStreetMap • &copy; MapTiler'}).addTo(map);
-  const markers = L.featureGroup().addTo(map);
-
-  // Radar pane
-  map.createPane('radar'); map.getPane('radar').style.zIndex=450;
-  const radarLayer = L.tileLayer('',{pane:'radar',opacity:0.7}).addTo(map);
-
-  // Seamarks overlay
-  const seamarks = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
-    opacity: 0.95, attribution: 'Seamarks © OpenSeaMap'
-  });
-  function setSeamarks(on){ if(on){ seamarks.addTo(map);} else { if(map.hasLayer(seamarks)) map.removeLayer(seamarks);} }
-  el.seamarksToggle?.addEventListener('change', e=> setSeamarks(e.target.checked));
-  el.btnToolbarSeamark?.addEventListener('click', ()=> setSeamarks(!map.hasLayer(seamarks)));
-
-  /* ===== DEPTHS OVERLAYS (Global + INFOMAR) ===== */
-  // Global bathymetry as semi-transparent overlay
-  const globalDepths = L.tileLayer(styles.ocean,{opacity:0.55,attribution:'MapTiler Ocean'});
-  // INFOMAR WMS (try multiple layers comma-separated; WMS will ignore unknown ids)
-  const infomar = L.tileLayer.wms('https://maps.marine.ie/arcgis/services/INFOMAR/INFOMAR_Bathymetry/MapServer/WMSServer',{
-    layers:'0,1,2,3,4,5', format:'image/png', transparent:true, attribution:'INFOMAR Bathymetry'
-  });
-  let depthMode='none';
-  function setDepth(mode){
-    // remove previous
-    if(map.hasLayer(globalDepths)) map.removeLayer(globalDepths);
-    if(map.hasLayer(infomar)) map.removeLayer(infomar);
-    // add new
-    if(mode==='global') globalDepths.addTo(map);
-    if(mode==='infomar') infomar.addTo(map);
-    depthMode=mode;
-    if(el.depths) el.depths.value=mode;
-    if(el.btnToolbarDepth) el.btnToolbarDepth.textContent='🌊 Depths '+(mode==='none'?'—':mode);
+async function getTioKey() {
+  // Your serverless function that returns the Tomorrow.io key
+  const url = `${API_BASE}/api/tio-key`;
+  const r = await fetch(url, { cache: 'no-store' });
+  if (!r.ok) {
+    throw new Error(`Failed to reach ${url} → ${r.status} ${r.statusText}`);
   }
-  if(el.depths) el.depths.addEventListener('change', e=> setDepth(e.target.value));
-  if(el.btnToolbarDepth) el.btnToolbarDepth.addEventListener('click', ()=>{
-    const cycle = depthMode==='none' ? 'global' : depthMode==='global' ? 'infomar' : 'none';
-    setDepth(cycle);
-  });
+  const data = await r.json();
+  if (!data || !data.key) throw new Error('tio-key endpoint returned no key.');
+  return data.key;
+}
 
-  /* ===== FULLSCREEN ===== */
-  function toggleFull(){ el.app.classList.toggle('full'); setTimeout(()=>map.invalidateSize(),240); }
-  el.btnFull?.addEventListener('click', toggleFull);
+async function fetchWeatherByLatLon(lat, lon, apiKey) {
+  // Example Tomorrow.io v4 endpoint (adjust to your exact usage)
+  const url = `https://api.tomorrow.io/v4/weather/forecast?location=${lat},${lon}&timesteps=1h&units=metric&apikey=${encodeURIComponent(apiKey)}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Tomorrow.io error: ${r.status} ${r.statusText}`);
+  return r.json();
+}
 
-  /* ===== HELPERS ===== */
-  let speedUnit='kmh', lastSpeedMs=0, maxSpeed=0, gpsWatchId=null, gotFix=false, radarTimer=null;
-  const toF=c=>Math.round(c*9/5+32), msToMph=ms=>Math.round(ms*2.23694), mmToIn=mm=>Math.round(ms/25.4*100)/100, msToKn=ms=>Math.round(ms*1.94384);
-  const iconFor=()=> '☁';
-  const fmtSpeed=ms=>{ ms=(ms==null||isNaN(ms))?0:ms; if(speedUnit==='kmh')return Math.round(ms*3.6)+' km/h'; if(speedUnit==='mph')return Math.round(ms*2.23694)+' mph'; return msToKn(ms)+' knots'; };
-  function setMarker(lat,lon,label){ markers.clearLayers(); L.marker([lat,lon]).addTo(markers).bindPopup(label||'Here').openPopup(); }
-  function toggleHUD(open){ const s=el.speedHUD; if(!s)return; if(typeof open==='boolean') s.style.display=open?'flex':'none'; else s.style.display=(s.style.display==='flex')?'none':'flex'; }
+async function geocodeCity(name, apiKey) {
+  // Tomorrow.io geocoding convenience; swap for your preferred geocoder if different
+  const url = `https://api.tomorrow.io/v4/locations?search=${encodeURIComponent(name)}&apikey=${encodeURIComponent(apiKey)}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Geocode error: ${r.status} ${r.statusText}`);
+  const data = await r.json();
+  const loc = data?.locations?.[0];
+  if (!loc) throw new Error('City not found.');
+  return { lat: loc.lat, lon: loc.lon, resolved: `${loc.name}, ${loc.countryCode}` };
+}
 
-  /* Map style switch */
-  el.mapStyle.addEventListener('change', e=>{ const v=e.target.value; if(base) map.removeLayer(base); base=L.tileLayer(styles[v],{attribution:'&copy; OpenStreetMap • &copy; MapTiler'}).addTo(map); });
+async function boot() {
+  try {
+    clearError();
+    els.status.textContent = 'Booting…';
 
-  /* ===== RADAR (RainViewer) ===== */
-  const RV={frames:[],idx:0};
-  function loadRadar(){
-    fetch('https://api.rainviewer.com/public/weather-maps.json',{cache:'no-store'})
-      .then(r=>r.json()).then(j=>{ RV.frames=[...(j?.radar?.past||[]),...(j?.radar?.nowcast||[])]; el.frame.max=Math.max(RV.frames.length-1,0); setRadar(RV.frames.length-1); }).catch(()=>{});
-  }
-  function setRadar(i){
-    if(!RV.frames.length) return;
-    RV.idx=Math.max(0,Math.min(i,RV.frames.length-1));
-    const fr=RV.frames[RV.idx]; if(!fr) return;
-    radarLayer.setUrl(`https://tilecache.rainviewer.com/v2/radar/${fr.time}/256/{z}/{x}/{y}/2/1_1.png`);
-    el.frametime.textContent=new Date(fr.time*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-  }
-  el.frame.addEventListener('input', e=>setRadar(+e.target.value));
-  el.play.addEventListener('click', ()=>{ if(radarTimer){clearInterval(radarTimer);radarTimer=null;el.play.textContent='▶︎';return;} if(!RV.frames.length)return; el.play.textContent='⏸'; radarTimer=setInterval(()=>{ const n=(RV.idx+1)%RV.frames.length; el.frame.value=n; setRadar(n); },700); });
-  el.opacity.addEventListener('input', e=>radarLayer.setOpacity(+e.target.value));
-  el.refresh.addEventListener('click', loadRadar);
+    const key = await getTioKey();
+    els.status.innerHTML = `API base: <b>${API_BASE || '(same-origin)'}</b> — key ✓`;
 
-  /* ===== SEARCH / GEO ===== */
-  function doSearch(){
-    const q=el.search.value.trim(); if(!q) return;
-    const eir=/^[A-Z0-9]{3}\s?[A-Z0-9]{4}$/i;
-    const url=eir.test(q)?`https://nominatim.openstreetmap.org/search?postalcode=${q.replace(/\s+/g,'')}&countrycodes=ie&format=json&addressdetails=1&limit=5`:`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`;
-    fetch(url,{headers:{'Accept-Language':'en'}}).then(r=>r.json()).then(arr=>{ if(!arr?.length)return; const lat=parseFloat(arr[0].lat),lon=parseFloat(arr[0].lon),name=arr[0].display_name||'Location'; map.setView([lat,lon],11); setMarker(lat,lon,name); updateAll(lat,lon,name); }).catch(()=>{});
-  }
-  el.btnSearch.addEventListener('click', doSearch);
-  el.search.addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
-  el.btnGeo.addEventListener('click', ()=>{ if(!navigator.geolocation)return; navigator.geolocation.getCurrentPosition(pos=>{ const {latitude:lat,longitude:lon}=pos.coords; map.setView([lat,lon],11); setMarker(lat,lon,'You are here'); updateAll(lat,lon,'My location'); }); });
-  el.btnPin.addEventListener('click', ()=>{ const c=map.getCenter(); setMarker(c.lat,c.lng,'Pinned point'); updateAll(c.lat,c.lng,'Pinned point'); });
+    els.btnGeo.onclick = async () => {
+      try {
+        clearError();
+        els.out.textContent = 'Getting location…';
+        const pos = await new Promise((res, rej) => {
+          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 10000 });
+        });
+        const { latitude, longitude } = pos.coords;
+        els.out.textContent = `Lat: ${latitude.toFixed(5)}, Lon: ${longitude.toFixed(5)} — fetching…`;
+        const data = await fetchWeatherByLatLon(latitude, longitude, key);
+        els.out.textContent = JSON.stringify(data, null, 2);
+      } catch (e) { showError(e.message); }
+    };
 
-  /* ===== WEATHER (Open-Meteo) ===== */
-  el.units.addEventListener('change', ()=>{ const c=map.getCenter(); updateAll(c.lat,c.lng,'Updated units'); });
+    els.btnCity.onclick = async () => {
+      try {
+        clearError();
+        const name = (els.city.value || '').trim();
+        if (!name) { showError('Type a city name.'); return; }
+        els.out.textContent = `Resolving “${name}”…`;
+        const loc = await geocodeCity(name, key);
+        els.out.textContent = `Found ${loc.resolved} (${loc.lat}, ${loc.lon}) — fetching…`;
+        const data = await fetchWeatherByLatLon(loc.lat, loc.lon, key);
+        els.out.textContent = JSON.stringify(data, null, 2);
+      } catch (e) { showError(e.message); }
+    };
 
-  function updateAll(lat,lon,label){
-    el.badge.textContent=`${label||'Here'} • ${lat.toFixed(3)}, ${lon.toFixed(3)}`;
-    updateForecast(lat,lon).then(()=>{ if(el.useTomorrow?.checked && !el.useTomorrow.disabled) updateTomorrow(lat,lon); });
-    loadTides(lat,lon);
-  }
-
-  function updateForecast(lat,lon){
-    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=temperature_2m,precipitation,cloudcover,windspeed_10m,weathercode,snowfall&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,sunrise,sunset&forecast_days=7&timezone=auto`;
-    return fetch(url,{cache:'no-store'}).then(r=>r.json()).then(j=>{
-      const metric=(el.units.value==='metric');
-      const tNow=j?.current_weather?.temperature;
-      const wArr=j?.hourly?.windspeed_10m||[], pArr=j?.hourly?.precipitation||[], cArr=j?.hourly?.cloudcover||[];
-      const sunrise=j?.daily?.sunrise?.[0], sunset=j?.daily?.sunset?.[0];
-      const wMs=wArr[0], pMm=pArr[0], cl=cArr[0];
-
-      el.nowIcon.textContent=iconFor();
-      el.temp.textContent=(tNow==null)?'Temp —':(metric?Math.round(tNow)+'°C':toF(tNow)+'°F');
-      el.wind.dataset.source='openmeteo';
-      el.wind.textContent=(wMs==null)?'Wind —':(metric?'Wind '+Math.round(wMs)+' m/s':'Wind '+msToMph(wMs)+' mph');
-      el.precip.textContent=(pMm==null)?'Precip —':(metric?'Precip '+pMm+' mm':'Precip '+mmToIn(pMm)+' in');
-      el.cloud.textContent=(cl==null)?'Cloud —':'Cloud '+cl+'%';
-      el.sun.textContent=(sunrise&&sunset)?`Sunrise ${new Date(sunrise).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} / Sunset ${new Date(sunset).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`:'Sunrise — / Sunset —';
-      el.updated.textContent='Updated '+new Date().toLocaleTimeString();
-
-      // Hourly 24
-      el.hourly.innerHTML='';
-      const H=Math.min(24,(j?.hourly?.time||[]).length);
-      for(let i=0;i<H;i++){
-        const ti=j.hourly.time[i].slice(11,16), tc=j.hourly.temperature_2m[i], pp=j.hourly.precipitation[i];
-        const div=document.createElement('div');
-        div.className='hour';
-        div.innerHTML=`${ti}<div class="ico">☁</div>${metric?Math.round(tc)+'°C':toF(tc)+'°F'}<br>${metric?pp+' mm':mmToIn(pp)+' in'}`;
-        el.hourly.appendChild(div);
-      }
-      // Daily 7
-      el.daily.innerHTML='';
-      const D=(j?.daily?.time||[]).length;
-      for(let d=0; d<D; d++){
-        const wd=new Date(j.daily.time[d]).toLocaleDateString(undefined,{weekday:'short'});
-        const tmax=j.daily.temperature_2m_max[d], tmin=j.daily.temperature_2m_min[d], pr=j.daily.precipitation_sum?.[d]??0;
-        const row=document.createElement('div');
-        row.className='day';
-        row.innerHTML=`${wd}<div class="ico">☁</div>${metric?Math.round(tmax)+'°C / '+Math.round(tmin)+'°C':toF(tmax)+'°F / '+toF(tmin)+'°F'}<br>${metric?pr+' mm':mmToIn(pr)+' in'}`;
-        el.daily.appendChild(row);
-      }
-    }).catch(()=>{ el.updated.textContent='Live forecast failed'; });
-  }
-
-  /* ===== Tomorrow.io via proxy (expanded) ===== */
-  function markTio(state,msg){
-    if(state==='ok'){ el.useTomorrow.disabled=false; el.tomorrowWrap.classList.remove('disabled'); el.tioNote.textContent=''; }
-    else { el.useTomorrow.disabled=true; el.tomorrowWrap.classList.add('disabled'); el.tioNote.textContent=msg||'(proxy offline)'; }
-  }
-  // Probe once
-  fetch(`${API_BASE}/api/tomorrow?lat=53.35&lon=-6.26`,{cache:'no-store'})
-    .then(r=>{ if(r.ok) markTio('ok'); else markTio('err','HTTP '+r.status); })
-    .catch(()=> markTio('err','no response'));
-
-  function updateTomorrow(lat,lon){
-    if (!el.useTomorrow || !el.useTomorrow.checked || el.useTomorrow.disabled) return;
-    const metric=(el.units.value==='metric');
-    const u = metric ? 'metric' : 'imperial';
-    fetch(`${API_BASE}/api/tomorrow?lat=${lat}&lon=${lon}&units=${u}`, { cache:'no-store' })
-      .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
-      .then(j=>{
-        const v=j?.data?.values||{};
-        const ws=v.windSpeed; // m/s metric
-        const wd=v.windDirection;
-        const gust=v.windGust;
-        const wave=v.waveHeight;
-        let txt = metric ? (`Wind ${ws!=null?Math.round(ws):'—'} m/s`) : (`Wind ${ws!=null?Math.round(ws*2.23694):'—'} mph`);
-        if (wd!=null) txt += ` ${Math.round(wd)}°`;
-        if (gust!=null) txt += metric? `, Gust ${Math.round(gust)} m/s` : `, Gust ${Math.round(gust*2.23694)} mph`;
-        if (wave!=null) txt += `, Wave ${wave.toFixed(1)} m`;
-        el.wind.dataset.source='tomorrow';
-        el.wind.textContent = txt+' (Tomorrow.io)';
-      })
-      .catch(()=>{ /* fallback to Open-Meteo already on chip */ });
-  }
-  el.useTomorrow.addEventListener('change', ()=>{ const c=map.getCenter(); updateAll(c.lat,c.lng,'Updated wind source'); });
-
-  /* ===== Waterways (OSM Overpass) ===== */
-  const ww = { layer:L.featureGroup().addTo(map), busy:false, lastFetchAt:0 };
-  ww.layer.remove(); // hidden until toggled
-
-  function wwEmoji(tags){
-    if (tags.waterway === 'lock_gate') return '🗝️';
-    if (tags.waterway === 'weir') return '🌊';
-    if (tags.waterway === 'dam') return '🧱';
-    if (tags.leisure === 'slipway') return '🛶';
-    if (tags.leisure === 'marina' || tags['seamark:type'] === 'mooring') return '⛵';
-    if (tags.man_made === 'pier' || tags.man_made === 'jetty') return '🛳️';
-    if (tags.amenity === 'fuel') return '⛽';
-    if (tags.harbour === 'yes' || tags['seamark:type'] === 'harbour') return '⚓';
-    if (tags.natural === 'sand' || tags.natural === 'beach') return '🏖️';
-    return '📍';
-  }
-
-  function wwFilters(){
-    const v = el.wwFilter?.value || 'all';
-    const parts = [];
-    const locks = '["waterway"~"lock_gate|weir|dam"]';
-    const slip  = '["leisure"="slipway"]';
-    const marina= '["leisure"="marina"]';
-    const moor  = '["seamark:type"="mooring"]';
-    const pier  = '["man_made"~"pier|jetty"]';
-    const fuel  = '["amenity"="fuel"]';
-    const harb  = '["harbour"="yes"]';
-    const sand  = '["natural"~"sand|beach"]';
-    const add = s => parts.push(`node${s}(BBOX);`,`way${s}(BBOX);`,`relation${s}(BBOX);`);
-    if (v==='all' || v==='locks')   add(locks);
-    if (v==='all' || v==='slipways')add(slip);
-    if (v==='all' || v==='marinas') { add(marina); add(moor); }
-    if (v==='all' || v==='piers')   add(pier);
-    if (v==='all' || v==='fuel')    add(fuel);
-    if (v==='all') { add(harb); add(sand); }
-    return parts;
-  }
-
-  function popupHTML(tags){
-    const type = tags.waterway || tags.leisure || tags.man_made || tags.amenity || tags.harbour || tags['seamark:type'] || tags.natural || 'poi';
-    const name = tags.name || '(no name)';
-    const website = tags.website || tags.contact_website;
-    return `
-      <div style="min-width:200px">
-        <div style="font-size:18px">${wwEmoji(tags)} ${name}</div>
-        <div style="font-size:12px;color:#bbb">${type}</div>
-        ${tags.operator ? `<div>Operator: ${tags.operator}</div>`:''}
-        ${tags.opening_hours ? `<div>Hours: ${tags.opening_hours}</div>`:''}
-        ${website ? `<div><a href="${website}" target="_blank" rel="noopener">Website</a></div>`:''}
-        <div class="sub">OSM data (may be incomplete)</div>
-      </div>`;
-  }
-
-  async function loadWaterways(){
-    if (!el.wwToggle?.checked) return;
-    const now = Date.now();
-    if (ww.busy || (now - ww.lastFetchAt < 2000)) return;
-    ww.busy = true; ww.lastFetchAt = now;
-    el.wwStatus.textContent = 'Loading…';
-
-    const b = map.getBounds();
-    const bbox = `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`;
-    const queries = wwFilters().join('\n').replaceAll('BBOX', bbox);
-
-    const overpassQL = `
-[out:json][timeout:25];
-(
-${queries}
-);
-out body center tags;
->;
-out skel qt;`;
-
-    try{
-      const r = await fetch('https://overpass-api.de/api/interpreter', {
-        method:'POST',
-        headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
-        body:'data='+encodeURIComponent(overpassQL)
-      });
-      const j = await r.json();
-
-      ww.layer.clearLayers();
-      (j.elements||[]).forEach(e=>{
-        if (!e.tags) return;
-
-        // Ways/relations with geometry
-        if ((e.type==='way' || e.type==='relation') && e.geometry && e.geometry.length){
-          const latlngs = e.geometry.map(pt=>[pt.lat, pt.lon]);
-          const isArea = !!(e.tags.area === 'yes' || e.tags.leisure === 'marina' || e.tags.man_made === 'pier');
-          const shape = isArea ? L.polygon(latlngs, {color:'#4dd0ff', weight:1, opacity:.8, fillOpacity:.1})
-                               : L.polyline(latlngs, {color:'#4dd0ff', weight:2, opacity:.9});
-          shape.bindPopup(popupHTML(e.tags));
-          ww.layer.addLayer(shape);
-          return;
-        }
-
-        // Nodes or center
-        const lat = e.lat || e.center?.lat;
-        const lon = e.lon || e.center?.lon;
-        if (lat==null || lon==null) return;
-        const m = L.marker([lat,lon], { title:e.tags.name||'' }).bindPopup(popupHTML(e.tags));
-        ww.layer.addLayer(m);
-      });
-
-      if (!map.hasLayer(ww.layer)) ww.layer.addTo(map);
-      el.wwStatus.textContent = `${ww.layer.getLayers().length} features`;
-    } catch(err){
-      console.warn('Overpass failed', err);
-      el.wwStatus.textContent = 'Failed';
-    } finally {
-      ww.busy = false;
+    // Register SW (cache bump)
+    if ('serviceWorker' in navigator) {
+      try { await navigator.serviceWorker.register('./sw.js?v=4'); } catch {}
     }
-  }
 
-  el.wwToggle?.addEventListener('change', ()=>{
-    if (el.wwToggle.checked) { if (!map.hasLayer(ww.layer)) ww.layer.addTo(map); loadWaterways(); }
-    else { if (map.hasLayer(ww.layer)) map.removeLayer(ww.layer); el.wwStatus.textContent='—'; }
-  });
-  el.wwFilter?.addEventListener('change', ()=> loadWaterways());
-  let wwDebounce; map.on('moveend', ()=>{ if (!el.wwToggle?.checked) return; clearTimeout(wwDebounce); wwDebounce=setTimeout(loadWaterways, 400); });
-
-  // Toolbar rivers quick
-  el.btnToolbarRivers?.addEventListener('click', ()=>{
-    el.wwToggle.checked = true;
-    if (!map.hasLayer(ww.layer)) ww.layer.addTo(map);
-    el.wwFilter.value = 'all';
-    loadWaterways();
-  });
-
-  /* ===== GPS (Speedome) ===== */
-  function updateSpeedUI(heading){
-    el.gps.textContent='⏱ '+fmtSpeed(lastSpeedMs);
-    const val = speedUnit==='kmh'? lastSpeedMs*3.6 : speedUnit==='mph'? lastSpeedMs*2.23694 : lastSpeedMs*1.94384;
-    const cap = speedUnit==='kmh'? 60 : speedUnit==='mph'? 40 : 30;
-    el.hudVal.textContent=Math.round(val);
-    el.hudUnits.textContent=(speedUnit==='kmh'?'km/h':speedUnit==='mph'?'mph':'knots');
-    el.hudFill.style.width=Math.min(100,Math.round(val/cap*100))+'%';
-    el.hudHead.textContent='🧭 '+(isFinite(heading)?Math.round(heading)+'°':'—°');
-    el.hudMax.textContent='🏁 Max '+(speedUnit==='kmh'?Math.round(maxSpeed*3.6):speedUnit==='mph'?Math.round(maxSpeed*2.23694):Math.round(maxSpeed*1.94384));
-    el.toggleSpeed.textContent='Units: '+(speedUnit==='kmh'?'km/h':speedUnit==='mph'?'mph':'knots');
-    el.max.textContent='🏁 Max: '+fmtSpeed(maxSpeed);
-    el.heading.textContent='🧭 '+(isFinite(heading)?Math.round(heading)+'°':'—°');
-  }
-  function startGPS(){
-    if(!navigator.geolocation){ el.gps.textContent='⏱ GPS not supported'; return; }
-    if(gpsWatchId!==null) return;
-    gpsWatchId=navigator.geolocation.watchPosition(pos=>{
-      const {latitude:lat, longitude:lon, speed, heading}=pos.coords;
-      lastSpeedMs=(speed==null)?0:speed;
-      if(lastSpeedMs>maxSpeed) maxSpeed=lastSpeedMs;
-      updateSpeedUI(heading);
-      el.badge.textContent=`${lat.toFixed(3)}, ${lon.toFixed(3)} • ${fmtSpeed(lastSpeedMs)}`;
-      if(!gotFix){ gotFix=true; map.setView([lat,lon],11); setMarker(lat,lon,'You are here'); updateAll(lat,lon,'My location'); }
-    }, ()=>{ el.gps.textContent='⏱ GPS unavailable'; }, {enableHighAccuracy:true,maximumAge:4000,timeout:20000});
-  }
-  el.toggleSpeed.addEventListener('click', ()=>{ speedUnit=(speedUnit==='kmh')?'mph':(speedUnit==='mph')?'knots':'kmh'; updateSpeedUI(NaN); });
-  $('toggleHUD').addEventListener('click', ()=>toggleHUD());
-  $('hudToggle').addEventListener('click', ()=>el.toggleSpeed.click());
-  $('speedFab').addEventListener('click', ()=>toggleHUD());
-  el.btnToolbarSpeed?.addEventListener('click', ()=>toggleHUD());
-
-  /* ===== TIDES (WorldTides demo key; replace with your key) ===== */
-  async function loadTides(lat,lon){
-    if(!el.tides) return;
-    el.tides.textContent='Loading tides…';
-    try{
-      // Using demo key (limited). Replace 'demo' with your key for production.
-      const url = `https://www.worldtides.info/api/v3?extremes&lat=${lat}&lon=${lon}&length=48&key=demo`;
-      const r = await fetch(url,{cache:'no-store'});
-      const j = await r.json();
-      const list = j?.extremes||[];
-      if(!list.length){ el.tides.textContent='No tide data'; return; }
-      // Show next 4 extremes
-      const now = Date.now()/1000;
-      const next = list.filter(ex=>ex.dt>=now).slice(0,4);
-      el.tides.innerHTML = next.map(ex=>{
-        const when = new Date(ex.dt*1000);
-        const hh = when.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-        const dd = when.toLocaleDateString([],{weekday:'short'});
-        const h = (ex.height!=null)? ex.height.toFixed(1)+' m' : '';
-        return `${dd} ${hh} — <b>${ex.type}</b> ${h}`;
-      }).join('<br>');
-    }catch(e){
-      el.tides.textContent='Tide fetch failed';
-    }
-  }
-
-  /* ===== INIT ===== */
-  loadRadar(); setInterval(loadRadar,5*60*1000);
-  startGPS();
-
-  if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(
-      p=>{ const {latitude:lat,longitude:lon}=p.coords; map.setView([lat,lon],11); updateAll(lat,lon,'My location'); },
-      ()=>updateAll(53.35,-6.26,'Dublin area')
+  } catch (e) {
+    showError(
+      `Startup failed: ${e.message}\n\nIf you are on GitHub Pages, make sure the Vercel deployment is live:\n${VERCEL_ORIGIN}`
     );
-  } else updateAll(53.35,-6.26,'Dublin area');
+    els.status.textContent = 'Failed to boot.';
+  }
+}
 
-})();
+boot();
 </script>
 </body>
 </html>
-"""
-out = "/mnt/data/CGE_WeatherMarine_GitHub.html"
-with open(out, "w", encoding="utf-8") as f:
-    f.write(html)
-out
