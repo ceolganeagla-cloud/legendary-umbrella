@@ -2,12 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#0a0f15">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>Legendary Umbrella — Marine Weather & Nav</title>
 <link rel="icon" href="favicon.ico">
-<meta name="theme-color" content="#0a0f15">
 
-<!-- Leaflet (sync load; no defer so L exists before our code runs) -->
+<!-- Leaflet -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -17,43 +19,48 @@
     --ink:#e9f0f8; --muted:#9fb2c8; --accent:#22c55e; --warn:#ef4444;
   }
   *{box-sizing:border-box}
-  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
-  header{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial}
+  header{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   header h1{font-size:18px;margin:0}
-  .brand{padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:#0d1a26}
+  .brand{padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:#0d1a26;white-space:nowrap}
   .status{margin-left:auto;font-size:12px;color:var(--muted)}
   main{display:grid;grid-template-columns:1fr;gap:12px;padding:12px;max-width:1100px;margin:0 auto}
   @media(min-width:1000px){ main{grid-template-columns:1fr 380px;} }
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
-  #map{height:60vh;min-height:420px;border-radius:12px}
-  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  button,.btn{cursor:pointer;border:1px solid var(--line);background:#111a27;color:var(--ink);border-radius:10px;padding:8px 12px}
-  input{background:#0e1320;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:8px 10px;min-width:220px}
-  pre{white-space:pre-wrap;max-height:42vh;overflow:auto;background:#0b121c;border-radius:10px;padding:10px;border:1px solid var(--line)}
-  .error{background:#2a0f0f;border-color:#5a1d1d}
-  .good{color:var(--accent)}
+  .toolbar{display:flex;gap:8px;flex-wrap:nowrap;align-items:center;overflow:auto;padding-bottom:6px}
+  .toolbar::-webkit-scrollbar{height:6px}
+  button{cursor:pointer;border:1px solid var(--line);background:#111a27;color:var(--ink);border-radius:10px;padding:10px 12px}
+  .btn{white-space:nowrap}
+  .btn.active{ outline:2px solid var(--accent); }
+  .muted{color:var(--muted)}
+  .chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin-right:6px;background:#0e1724}
+  #map{height:62vh;min-height:420px;border-radius:12px}
+  @media(max-width:640px){
+    #map{height:70vh;min-height:440px}
+    button{padding:12px 14px}
+  }
+  input{background:#0e1320;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px;min-width:220px}
   .metric{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:14px}
   .metric b{color:var(--ink)}
-  .muted{color:var(--muted)}
-  .btn.active{ outline:2px solid var(--accent); }
-  .chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin-right:6px;background:#0e1724}
 
-  /* Speedometer */
+  /* Speedo */
   .speedo{display:grid;place-items:center;padding:16px}
-  .gauge{width:220px;height:110px;background:conic-gradient(#1f2b3a 0 180deg);
-    border-bottom-left-radius:220px;border-bottom-right-radius:220px;position:relative;border:1px solid var(--line)}
-  .needle{position:absolute;left:50%;bottom:0;transform-origin:bottom center;width:2px;height:100px;background:#eaeaea;box-shadow:0 0 6px rgba(255,255,255,.6)}
+  .gauge{width:240px;height:120px;background:conic-gradient(#1f2b3a 0 180deg);
+    border-bottom-left-radius:240px;border-bottom-right-radius:240px;position:relative;border:1px solid var(--line)}
+  .needle{position:absolute;left:50%;bottom:0;transform-origin:bottom center;width:2px;height:108px;background:#eaeaea;box-shadow:0 0 6px rgba(255,255,255,.6)}
   .ticks{position:absolute;left:0;top:0;width:100%;height:100%}
-  .speed-read{margin-top:8px;font-size:28px;font-weight:700;text-align:center}
+  .speed-read{margin-top:10px;font-size:30px;font-weight:800;text-align:center}
   .units{font-size:12px;color:var(--muted);text-align:center;margin-top:-6px}
   .veh{ filter: drop-shadow(0 0 2px rgba(0,0,0,.6)); }
 
   /* Debug panel */
-  .debug{font-size:12px;color:var(--muted)}
-  .debug summary{cursor:pointer;user-select:none}
+  details.debug{font-size:12px;color:var(--muted);margin-top:6px}
+  details.debug summary{cursor:pointer;user-select:none}
+  pre{white-space:pre-wrap;max-height:40vh;overflow:auto;background:#0b121c;border-radius:10px;padding:10px;border:1px solid var(--line);margin-top:6px}
   .k{color:#8ab4ff}
   .ok{color:#22c55e}
   .bad{color:#ef4444}
+  .error{background:#2a0f0f;border:1px solid #5a1d1d;color:#ffd6d6;border-radius:10px;padding:10px;display:none}
 </style>
 </head>
 <body>
@@ -64,42 +71,53 @@
 </header>
 
 <main>
-  <!-- LEFT: Map + Controls -->
+  <!-- LEFT -->
   <section>
     <div class="card">
-      <div class="row" style="margin-bottom:8px">
-        <button id="btnTrack">Start tracking</button>
-        <button id="btnCenter">Center on me</button>
-        <button id="btnFull">Fullscreen map</button>
-        <span class="muted">Layers: </span>
+      <div class="toolbar">
+        <button id="btnTrack" class="btn">Start tracking</button>
+        <button id="btnCenter" class="btn">Center on me</button>
+        <button id="btnFull" class="btn">Fullscreen</button>
+        <span class="muted" style="padding:0 6px">Layers</span>
         <button id="btnOSM" class="btn">OSM</button>
         <button id="btnOcean" class="btn">Ocean</button>
+        <button id="btnSat" class="btn">Sat</button>
+        <button id="btnTopo" class="btn">Topo</button>
         <button id="btnSeamark" class="btn">Seamarks</button>
+        <span class="muted" style="padding:0 6px">Live</span>
         <button id="btnAircraft" class="btn">Aircraft</button>
         <button id="btnBoats" class="btn">Boats</button>
       </div>
+
       <div id="map"></div>
-      <div class="muted" style="margin-top:6px">
-        Basemaps: <span class="chip">OpenStreetMap</span> <span class="chip">Esri World Ocean</span> & overlay
-        <span class="chip">OpenSeaMap Seamarks</span>. Ocean basemap shows bathymetry shading; seamarks add buoys, beacons, channels.
+
+      <div class="muted" style="margin-top:8px">
+        Basemaps:
+        <span class="chip">OpenStreetMap</span>
+        <span class="chip">Esri World Ocean</span>
+        <span class="chip">Esri World Imagery (Satellite)</span>
+        <span class="chip">OpenTopoMap</span>
+        & overlay <span class="chip">OpenSeaMap Seamarks</span>.
       </div>
-      <details class="debug" style="margin-top:8px">
+
+      <details class="debug">
         <summary>Debug</summary>
         <div>API base: <span class="k" id="dbgBase">—</span></div>
         <div>OpenSky URL: <span class="k" id="dbgOpenSky">—</span> <span id="dbgOpenSkyState"></span></div>
         <div>AIS URL: <span class="k" id="dbgAis">—</span> <span id="dbgAisState"></span></div>
         <div>Planes: <span class="k" id="dbgPlaneCount">0</span> | Boats: <span class="k" id="dbgBoatCount">0</span></div>
+        <pre id="raw" style="display:none"></pre>
       </details>
     </div>
 
     <div class="card" id="wxCard" style="margin-top:12px">
-      <div class="row" style="margin-bottom:6px">
-        <button id="btnGeo">Use my location</button>
-        <input id="city" placeholder="Enter city (e.g., Dublin)" />
-        <button id="btnCity">Get weather</button>
+      <div class="toolbar" style="gap:8px">
+        <button id="btnGeo" class="btn">Use my location</button>
+        <input id="city" placeholder="Enter city (e.g., Dublin)" inputmode="search" autocomplete="off"/>
+        <button id="btnCity" class="btn">Get weather</button>
         <span class="muted">API base: <b id="apiBaseTxt">—</b></span>
       </div>
-      <div class="metric" id="wx">
+      <div class="metric">
         <div class="muted">Temp:</div><b id="mTemp">—</b>
         <div class="muted">Wind:</div><b id="mWind">—</b>
         <div class="muted">Gust:</div><b id="mGust">—</b>
@@ -107,13 +125,12 @@
         <div class="muted">Precip Prob:</div><b id="mPop">—</b>
         <div class="muted">Cloud Cover:</div><b id="mCloud">—</b>
       </div>
-      <pre id="raw"></pre>
-      <div id="err" class="card error" style="display:none;margin-top:8px"></div>
+      <div id="err" class="error"></div>
     </div>
   </section>
 
-  <!-- RIGHT: Speedometer + Info -->
-  <aside class="rightcol">
+  <!-- RIGHT -->
+  <aside>
     <div class="card speedo">
       <div class="gauge" id="gauge">
         <div class="needle" id="needle" style="transform:translateX(-50%) rotate(180deg)"></div>
@@ -134,7 +151,9 @@
       </div>
       <div class="speed-read" id="spd">0.0</div>
       <div class="units">knots (kn)</div>
-      <div class="muted" style="text-align:center;margin-top:6px">Uses GPS speed; falls back to distance over time if speed is missing.</div>
+      <div class="muted" style="text-align:center;margin-top:6px">
+        Uses GPS speed; falls back to distance over time if speed is missing.
+      </div>
     </div>
 
     <div class="card">
@@ -150,47 +169,43 @@
 </main>
 
 <script>
-/*** ====== HOSTING / API BASE ====== ***/
+/*** HOSTING / API BASE ***/
 const ON_VERCEL = location.hostname.endsWith('.vercel.app');
-const ON_GHPAGES = location.hostname.endsWith('github.io');
 const ON_LOCAL = ['localhost','127.0.0.1'].includes(location.hostname);
 const VERCEL_ORIGIN = 'https://legendary-umbrella-ashen.vercel.app';
 const API_BASE = (ON_VERCEL || ON_LOCAL) ? '' : VERCEL_ORIGIN;
-document.getElementById('apiBaseTxt').textContent = API_BASE || '(same-origin)';
-document.getElementById('dbgBase').textContent = API_BASE || '(same-origin)';
-
 const $ = (id)=>document.getElementById(id);
-const setStatus = (t)=>{$('status').textContent=t;}
+$('apiBaseTxt').textContent = API_BASE || '(same-origin)';
+$('dbgBase').textContent = API_BASE || '(same-origin)';
+
+const setStatus = (t)=>$('status').textContent=t;
 const showErr = (msg)=>{ const e=$('err'); e.style.display='block'; e.textContent=msg; }
 const clearErr = ()=>{ const e=$('err'); e.style.display='none'; e.textContent=''; }
 
-/*** ====== WEATHER HELPERS ====== ***/
+/*** WEATHER HELPERS (raw hidden unless debug open) ***/
 async function getTioKey(){
   const url = `${API_BASE}/api/tio-key`;
   const r = await fetch(url, {cache:'no-store'});
   if(!r.ok) throw new Error(`Failed to reach ${url} → ${r.status}`);
   const j = await r.json();
-  if(!j || !j.key) throw new Error('tio-key endpoint returned no key.');
+  if(!j?.key) throw new Error('tio-key endpoint returned no key.');
   return j.key;
 }
 async function tmrForecastByLatLon(lat,lon,key){
   const url = `https://api.tomorrow.io/v4/weather/forecast?location=${lat},${lon}&timesteps=1h&units=metric&apikey=${encodeURIComponent(key)}`;
-  const r = await fetch(url);
-  if(!r.ok) throw new Error(`Tomorrow.io error: ${r.status} ${r.statusText}`);
+  const r = await fetch(url); if(!r.ok) throw new Error(`Tomorrow.io ${r.status}`);
   return r.json();
 }
 async function tmrGeocodeCity(name,key){
   const url = `https://api.tomorrow.io/v4/locations?search=${encodeURIComponent(name)}&apikey=${encodeURIComponent(key)}`;
-  const r = await fetch(url);
-  if(!r.ok) throw new Error(`Geocode error: ${r.status} ${r.statusText}`);
-  const j = await r.json();
-  const loc = j?.locations?.[0];
+  const r = await fetch(url); if(!r.ok) throw new Error(`Geocode ${r.status}`);
+  const j = await r.json(); const loc=j?.locations?.[0];
   if(!loc) throw new Error('City not found.');
   return { lat:loc.lat, lon:loc.lon, resolved:`${loc.name}, ${loc.countryCode}` };
 }
 function setWX(data){
   const point = data?.timelines?.hourly?.[0];
-  if(!point){ $('raw').textContent = JSON.stringify(data,null,2); return; }
+  if(!point){ return; }
   const v = point.values || {};
   $('mTemp').textContent = (v.temperature ?? '—') + ' °C';
   $('mWind').textContent = (v.windSpeed ?? '—') + ' m/s';
@@ -198,31 +213,63 @@ function setWX(data){
   $('mDir').textContent = (v.windDirection ?? '—') + '°';
   $('mPop').textContent = (v.precipitationProbability ?? '—') + ' %';
   $('mCloud').textContent = (v.cloudCover ?? '—') + ' %';
-  $('raw').textContent = JSON.stringify(data,null,2);
+  const dbgOpen = document.querySelector('details.debug')?.open;
+  $('raw').style.display = dbgOpen ? 'block' : 'none';
+  if (dbgOpen) $('raw').textContent = JSON.stringify(data,null,2);
 }
 
-/*** ====== MAP ====== ***/
+/*** MAP + BASEMAPS ***/
 let map, meMarker, meAccuracy, trackId=null, lastFix=null;
-let osm, ocean, seamark;
+let osm, ocean, sat, topo, seamark;   // layers
 
 function initMap(){
   map = L.map('map',{center:[53.35,-6.26],zoom:10,minZoom:2});
+
   // basemaps
   osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
     maxZoom:19, attribution: '&copy; OpenStreetMap'
   }).addTo(map);
+
   ocean = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}',{
-    maxZoom:13, attribution: 'Esri Ocean'
-  });
-  // overlay
-  seamark = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',{
-    maxZoom:18, opacity:0.9, attribution:'OpenSeaMap'
+    maxZoom:13, attribution: 'Tiles &copy; Esri Ocean'
   });
 
-  // buttons
-  $('btnOSM').onclick   = ()=>{ map.eachLayer(l=>map.removeLayer(l)); osm.addTo(map); if(meMarker) meMarker.addTo(map); if(meAccuracy) meAccuracy.addTo(map); if(map.hasLayer(aircraftLayer)) aircraftLayer.addTo(map); if(map.hasLayer(boatsLayer)) boatsLayer.addTo(map); };
-  $('btnOcean').onclick = ()=>{ map.eachLayer(l=>map.removeLayer(l)); ocean.addTo(map); if(meMarker) meMarker.addTo(map); if(meAccuracy) meAccuracy.addTo(map); if(map.hasLayer(aircraftLayer)) aircraftLayer.addTo(map); if(map.hasLayer(boatsLayer)) boatsLayer.addTo(map); };
-  $('btnSeamark').onclick = ()=>{ seamark.addTo(map); };
+  sat = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
+    maxZoom:19, attribution: 'Imagery &copy; Esri World Imagery'
+  });
+
+  topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{
+    maxZoom:17, attribution: 'Map data: &copy; OpenTopoMap contributors'
+  });
+
+  // overlay
+  seamark = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',{
+    maxZoom:18, opacity:0.9, attribution:'Seamarks &copy; OpenSeaMap'
+  });
+
+  // basemap buttons keep overlays / live layers
+  function readdLiveLayers(){
+    if(meMarker) meMarker.addTo(map);
+    if(meAccuracy) meAccuracy.addTo(map);
+    if(map.hasLayer(aircraftLayer)) aircraftLayer.addTo(map);
+    if(map.hasLayer(boatsLayer)) boatsLayer.addTo(map);
+  }
+  function switchBase(newBase){
+    map.eachLayer(l=>{
+      // keep overlays (seamark is overlay)
+      if(l!==seamark) map.removeLayer(l);
+    });
+    newBase.addTo(map);
+    if(map.hasLayer(seamark)) seamark.addTo(map);
+    readdLiveLayers();
+  }
+
+  $('btnOSM').onclick   = ()=> switchBase(osm);
+  $('btnOcean').onclick = ()=> switchBase(ocean);
+  $('btnSat').onclick   = ()=> switchBase(sat);
+  $('btnTopo').onclick  = ()=> switchBase(topo);
+  $('btnSeamark').onclick = ()=> seamark.addTo(map);
+
   $('btnFull').onclick = ()=>{
     const el = $('map');
     if(!document.fullscreenElement){ el.requestFullscreen?.(); }
@@ -230,22 +277,21 @@ function initMap(){
   };
   $('btnCenter').onclick = ()=>{ if(lastFix){ map.setView([lastFix.coords.latitude,lastFix.coords.longitude], Math.max(map.getZoom(), 14)); } };
 
-  // size fix after first paint
   setTimeout(()=> map.invalidateSize(), 0);
 }
 
-/*** ====== GEO / SPEEDO ====== ***/
+/*** GEO / SPEEDO ***/
 const R = 6371000;
-function toRad(d){ return d*Math.PI/180; }
-function haversine(a,b){
+const toRad = d=> d*Math.PI/180;
+const haversine = (a,b)=>{
   const φ1=toRad(a.lat), φ2=toRad(b.lat), dφ=toRad(b.lat-a.lat), dλ=toRad(b.lon-a.lon);
   const s = Math.sin(dφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
   return 2*R*Math.asin(Math.sqrt(s));
-}
-function msToKn(ms){ return Number(ms*1.943844||0).toFixed(1); }
+};
+const msToKn = ms => Number(ms*1.943844||0).toFixed(1);
 function setNeedle(kn){
   const k = Math.max(0, Math.min(50, parseFloat(kn)||0));
-  const deg = 180 - (k/50)*180; // 0→180deg, 50→0deg
+  const deg = 180 - (k/50)*180;
   $('needle').style.transform = `translateX(-50%) rotate(${deg}deg)`;
   $('spd').textContent = k.toFixed(1);
 }
@@ -268,7 +314,6 @@ function startTracking(){
     lastFix = pos;
     const {latitude:lat, longitude:lon, accuracy:acc, heading, speed} = pos.coords;
     updateMeMarker(lat,lon,acc,heading);
-    // speed: prefer native m/s; fallback to distance/time
     let mps = Number.isFinite(speed) && speed!==null ? speed : null;
     if(!mps && window.__prevFix){
       const dt = (pos.timestamp - window.__prevFix.timestamp)/1000;
@@ -288,32 +333,18 @@ function stopTracking(){
 }
 $('btnTrack').onclick = ()=> trackId ? stopTracking() : startTracking();
 
-/*** ======= LIVE LAYERS: AIRCRAFT & BOATS ======= */
+/*** LIVE LAYERS: AIRCRAFT & BOATS ***/
 let aircraftLayer = L.layerGroup();
 let boatsLayer = L.layerGroup();
 let aircraftTimer = null, boatsTimer = null;
 
-// icon helpers
-function planeIcon(){
-  return L.icon({
-    iconUrl: 'https://cdn-icons-png.flaticon.com/512/3448/3448339.png',
-    iconSize: [20,20],
-    iconAnchor: [10,10]
-  });
-}
-function boatIcon(){
-  return L.icon({
-    iconUrl: 'https://cdn-icons-png.flaticon.com/512/77/77521.png',
-    iconSize: [20,20],
-    iconAnchor: [10,10]
-  });
-}
+function planeIcon(){ return L.icon({ iconUrl:'https://cdn-icons-png.flaticon.com/512/3448/3448339.png', iconSize:[20,20], iconAnchor:[10,10] }); }
+function boatIcon(){  return L.icon({ iconUrl:'https://cdn-icons-png.flaticon.com/512/77/77521.png',    iconSize:[20,20], iconAnchor:[10,10] }); }
 
-// AIRCRAFT via OpenSky (proxied by Vercel api/opensky.js)
+// OpenSky proxy
 async function fetchAircraftBBox(){
   const b = map.getBounds();
-  const n=b.getNorth(), s=b.getSouth(), e=b.getEast(), w=b.getWest();
-  const url = `${API_BASE}/api/opensky?n=${n}&s=${s}&e=${e}&w=${w}`;
+  const url = `${API_BASE}/api/opensky?n=${b.getNorth()}&s=${b.getSouth()}&e=${b.getEast()}&w=${b.getWest()}`;
   $('dbgOpenSky').textContent = url;
   const r = await fetch(url, { cache:'no-store' });
   $('dbgOpenSkyState').innerHTML = r.ok ? '<span class="ok">✓</span>' : `<span class="bad">✗ ${r.status}</span>`;
@@ -329,12 +360,12 @@ async function refreshAircraft(){
     for(const s of states){
       const callsign = (s[1]||'').trim();
       const lat = s[6], lon = s[5];
-      const track = s[10]; // degrees
-      const gs = s[9];     // m/s ground speed
+      const track = s[10]; // deg
+      const gs = s[9];     // m/s
       if(lat==null || lon==null) continue;
-      const m = L.marker([lat,lon], { icon: planeIcon() })
-        .bindTooltip(`${callsign || 'N/A'}\n${(gs? (gs*1.943844).toFixed(1)+' kn' : '—')} @ ${track==null?'—':Math.round(track)+'°'}`);
-      m.addTo(aircraftLayer);
+      L.marker([lat,lon], { icon: planeIcon() })
+        .bindTooltip(`${callsign || 'N/A'}\n${(gs? (gs*1.943844).toFixed(1)+' kn' : '—')} @ ${track==null?'—':Math.round(track)+'°'}`)
+        .addTo(aircraftLayer);
     }
   }catch(e){ console.warn(e); }
 }
@@ -346,13 +377,13 @@ function toggleAircraft(){
   }else{
     aircraftLayer.addTo(map);
     refreshAircraft();
-    aircraftTimer = setInterval(refreshAircraft, 10000); // every 10s
+    aircraftTimer = setInterval(refreshAircraft, 10000);
     $('btnAircraft').classList.add('active');
   }
 }
 $('btnAircraft').onclick = toggleAircraft;
 
-// BOATS via your AIS proxy (requires AIS_PROXY_URL env var on Vercel)
+// AIS proxy
 async function refreshBoats(){
   try{
     const url = `${API_BASE}/api/ais`;
@@ -360,14 +391,14 @@ async function refreshBoats(){
     const r = await fetch(url, { cache: 'no-store' });
     $('dbgAisState').innerHTML = r.ok ? '<span class="ok">✓</span>' : `<span class="bad">✗ ${r.status}</span>`;
     if(!r.ok) throw new Error('ais '+r.status);
-    const list = await r.json(); // expect array [{lat,lon,cog,sog,name,mmsi}, ...]
+    const list = await r.json();
     boatsLayer.clearLayers();
     $('dbgBoatCount').textContent = Array.isArray(list) ? list.length : 0;
     (list||[]).forEach(v=>{
       if(v.lat==null || v.lon==null) return;
-      const m = L.marker([v.lat, v.lon], { icon: boatIcon() })
-        .bindTooltip(`${v.name||v.mmsi||'Vessel'}\n${v.sog!=null? v.sog+' kn':'—'} @ ${v.cog!=null? Math.round(v.cog)+'°':'—'}`);
-      m.addTo(boatsLayer);
+      L.marker([v.lat, v.lon], { icon: boatIcon() })
+        .bindTooltip(`${v.name||v.mmsi||'Vessel'}\n${v.sog!=null? v.sog+' kn':'—'} @ ${v.cog!=null? Math.round(v.cog)+'°':'—'}`)
+        .addTo(boatsLayer);
     });
   }catch(e){ console.warn(e); }
 }
@@ -379,25 +410,25 @@ function toggleBoats(){
   }else{
     boatsLayer.addTo(map);
     refreshBoats();
-    boatsTimer = setInterval(refreshBoats, 15000); // every 15s
+    boatsTimer = setInterval(refreshBoats, 15000);
     $('btnBoats').classList.add('active');
   }
 }
 $('btnBoats').onclick = toggleBoats;
 
-/*** ====== WEATHER CONTROLS / BOOT ====== ***/
+/*** BOOT ***/
 async function boot(){
   try{
     clearErr();
     setStatus('Booting…');
     initMap();
     const key = await getTioKey();
-    $('status').innerHTML = `API base: <b>${API_BASE || '(same-origin)'}</b> — <span class="good">key ✓</span>`;
+    $('status').innerHTML = `API base: <b>${API_BASE || '(same-origin)'}</b> — <span style="color:#22c55e">key ✓</span>`;
 
     $('btnGeo').onclick = async ()=>{
       try{
         clearErr();
-        const pos = await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{enableHighAccuracy:true, timeout:10000}));
+        const pos = await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{enableHighAccuracy:true, timeout:12000}));
         const {latitude,longitude} = pos.coords;
         const data = await tmrForecastByLatLon(latitude,longitude,key);
         setWX(data);
@@ -415,20 +446,18 @@ async function boot(){
         map.setView([loc.lat,loc.lon], 9);
       }catch(e){ showErr(e.message); }
     };
+
+    // Keep raw hidden unless the Debug drawer is open
+    document.querySelector('details.debug').addEventListener('toggle', e=>{
+      $('raw').style.display = e.target.open ? 'block' : 'none';
+    });
   }catch(e){
     showErr(`Startup failed: ${e.message}`);
     setStatus('Failed to boot.');
   }
 }
 
-// Ensure Leaflet + DOM are ready
-document.addEventListener('DOMContentLoaded', () => {
-  if (!window.L) {
-    window.addEventListener('load', boot, { once: true });
-  } else {
-    boot();
-  }
-});
+document.addEventListener('DOMContentLoaded', boot);
 </script>
 </body>
 </html>
