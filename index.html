@@ -1,160 +1,321 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Legendary Umbrella — Weather</title>
-  <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="favicon.ico">
-  <meta name="theme-color" content="#0a0f15">
-  <style>
-    html,body{margin:0;padding:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
-    .app{min-height:100vh;display:flex;flex-direction:column;background:#0a0f15;color:#e9f0f8}
-    header{padding:14px 16px;border-bottom:1px solid #1b2a3b}
-    main{padding:16px;max-width:960px;margin:0 auto}
-    .card{background:#0f1620;border:1px solid #1b2a3b;border-radius:14px;padding:16px}
-    .muted{opacity:.8}
-    .error{background:#2a0f0f;border-color:#5a1d1d}
-    button{cursor:pointer;border:1px solid #1b2a3b;background:#111a27;color:#e9f0f8;border-radius:10px;padding:10px 14px}
-    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
-    .row > * {flex:0 0 auto}
-    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Legendary Umbrella — Marine Weather & Nav</title>
+<link rel="icon" href="favicon.ico">
+<meta name="theme-color" content="#0a0f15">
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+  :root{
+    --bg:#0a0f15; --panel:#0f1620; --card:#111a27; --line:#1b2a3b;
+    --ink:#e9f0f8; --muted:#9fb2c8; --accent:#22c55e; --warn:#ef4444;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+  header{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0}
+  .brand{padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:#0d1a26}
+  .status{margin-left:auto;font-size:12px;color:var(--muted)}
+  main{display:grid;grid-template-columns:1fr;gap:12px;padding:12px;max-width:1100px;margin:0 auto}
+  @media(min-width:1000px){ main{grid-template-columns:1fr 380px;} }
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+  #map{height:60vh;border-radius:12px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  button,.btn{cursor:pointer;border:1px solid var(--line);background:#111a27;color:var(--ink);border-radius:10px;padding:8px 12px}
+  input{background:#0e1320;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:8px 10px;min-width:220px}
+  pre{white-space:pre-wrap;max-height:42vh;overflow:auto;background:#0b121c;border-radius:10px;padding:10px;border:1px solid var(--line)}
+  .error{background:#2a0f0f;border-color:#5a1d1d}
+  .good{color:var(--accent)}
+  .metric{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:14px}
+  .metric b{color:var(--ink)}
+  .muted{color:var(--muted)}
+  /* Speedo */
+  .speedo{display:grid;place-items:center;padding:16px}
+  .gauge{width:220px;height:110px;background:
+    conic-gradient(#1f2b3a 0 180deg);
+    border-bottom-left-radius:220px;border-bottom-right-radius:220px;position:relative;border:1px solid var(--line)}
+  .needle{position:absolute;left:50%;bottom:0;transform-origin:bottom center;width:2px;height:100px;background:#eaeaea;box-shadow:0 0 6px rgba(255,255,255,.6)}
+  .ticks{position:absolute;left:0;top:0;width:100%;height:100%}
+  .speed-read{margin-top:8px;font-size:28px;font-weight:700;text-align:center}
+  .units{font-size:12px;color:var(--muted);text-align:center;margin-top:-6px}
+  .chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin-right:6px;background:#0e1724}
+  .rightcol .card{margin-bottom:12px}
+</style>
 </head>
 <body>
-<div class="app">
-  <header>
-    <h1>Legendary Umbrella — Weather</h1>
-    <div class="muted">Ceol Gan Eagla</div>
-  </header>
+<header>
+  <div class="brand">Ceol Gan Eagla</div>
+  <h1>Legendary Umbrella — Marine Weather & Nav</h1>
+  <div class="status" id="status">Booting…</div>
+</header>
 
-  <main>
-    <div class="card" id="status">Loading…</div>
+<main>
+  <!-- LEFT: Map + Controls -->
+  <section>
+    <div class="card">
+      <div class="row" style="margin-bottom:8px">
+        <button id="btnTrack">Start tracking</button>
+        <button id="btnCenter">Center on me</button>
+        <button id="btnFull">Fullscreen map</button>
+        <span class="muted">Layers: </span>
+        <button id="btnOSM" class="btn">OSM</button>
+        <button id="btnOcean" class="btn">Ocean</button>
+        <button id="btnSeamark" class="btn">Seamarks</button>
+      </div>
+      <div id="map"></div>
+      <div class="muted" style="margin-top:6px">
+        Basemaps: <span class="chip">OpenStreetMap</span> <span class="chip">Esri World Ocean</span> & overlay <span class="chip">OpenSeaMap Seamarks</span>.
+        Ocean basemap shows bathymetry shading; seamarks add buoys, beacons, channels.
+      </div>
+    </div>
 
-    <div class="card" style="margin-top:12px">
-      <div class="row">
+    <div class="card" id="wxCard" style="margin-top:12px">
+      <div class="row" style="margin-bottom:6px">
         <button id="btnGeo">Use my location</button>
         <input id="city" placeholder="Enter city (e.g., Dublin)" />
         <button id="btnCity">Get weather</button>
+        <span class="muted">API base: <b id="apiBaseTxt">—</b></span>
       </div>
-      <p class="muted" style="margin-top:8px">This build fetches the API key from Vercel even when hosted on GitHub Pages.</p>
-      <pre class="mono" id="out" style="white-space:pre-wrap;margin-top:12px"></pre>
+      <div class="metric" id="wx">
+        <div class="muted">Temp:</div><b id="mTemp">—</b>
+        <div class="muted">Wind:</div><b id="mWind">—</b>
+        <div class="muted">Gust:</div><b id="mGust">—</b>
+        <div class="muted">Direction:</div><b id="mDir">—</b>
+        <div class="muted">Precip Prob:</div><b id="mPop">—</b>
+        <div class="muted">Cloud Cover:</div><b id="mCloud">—</b>
+      </div>
+      <pre id="raw"></pre>
+      <div id="err" class="card error" style="display:none;margin-top:8px"></div>
+    </div>
+  </section>
+
+  <!-- RIGHT: Speedometer + Info -->
+  <aside class="rightcol">
+    <div class="card speedo">
+      <div class="gauge" id="gauge">
+        <div class="needle" id="needle" style="transform:translateX(-50%) rotate(0deg)"></div>
+        <svg class="ticks" viewBox="0 0 100 50" preserveAspectRatio="none">
+          <!-- simple ticks -->
+          <g stroke="#334a63" stroke-width="0.6">
+            <!-- 0..50kn every 5 -->
+            <!-- 0 at left (180deg), 50 at right (0deg) -->
+            <!-- draw 11 ticks -->
+            <line x1="5" y1="48" x2="5" y2="44"/>
+            <line x1="15" y1="48" x2="15" y2="44"/>
+            <line x1="25" y1="48" x2="25" y2="44"/>
+            <line x1="35" y1="48" x2="35" y2="44"/>
+            <line x1="45" y1="48" x2="45" y2="44"/>
+            <line x1="55" y1="48" x2="55" y2="44"/>
+            <line x1="65" y1="48" x2="65" y2="44"/>
+            <line x1="75" y1="48" x2="75" y2="44"/>
+            <line x1="85" y1="48" x2="85" y2="44"/>
+            <line x1="95" y1="48" x2="95" y2="44"/>
+          </g>
+        </svg>
+      </div>
+      <div class="speed-read" id="spd">0.0</div>
+      <div class="units">knots (kn)</div>
+      <div class="muted" style="text-align:center;margin-top:6px">Uses GPS speed; falls back to distance over time if speed is missing.</div>
     </div>
 
-    <div class="card error" id="err" style="display:none;margin-top:12px"></div>
-  </main>
-</div>
+    <div class="card">
+      <div class="muted">Position</div>
+      <div class="metric">
+        <div class="muted">Lat:</div><b id="pLat">—</b>
+        <div class="muted">Lon:</div><b id="pLon">—</b>
+        <div class="muted">Acc:</div><b id="pAcc">—</b>
+        <div class="muted">Bearing:</div><b id="pBrg">—</b>
+      </div>
+    </div>
+  </aside>
+</main>
 
 <script>
-/*
-  === IMPORTANT FIX ===
-  If we are on GitHub Pages (no server), call the Vercel API using an absolute URL.
-  If running on Vercel or localhost, use the relative /api path.
-*/
+/*** ====== HOSTING / API BASE ====== ***/
 const ON_VERCEL = location.hostname.endsWith('.vercel.app');
 const ON_GHPAGES = location.hostname.endsWith('github.io');
-const ON_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const ON_LOCAL = ['localhost','127.0.0.1'].includes(location.hostname);
+const VERCEL_ORIGIN = 'https://legendary-umbrella-ashen.vercel.app';
+const API_BASE = (ON_VERCEL || ON_LOCAL) ? '' : VERCEL_ORIGIN;
+document.getElementById('apiBaseTxt').textContent = API_BASE || '(same-origin)';
 
-const VERCEL_ORIGIN = 'https://legendary-umbrella-ashen.vercel.app'; // your deployment shown in repo
-const API_BASE = (ON_VERCEL || ON_LOCAL) ? '' : VERCEL_ORIGIN; // '' means same-origin (Vercel), absolute for GH Pages
+const $ = (id)=>document.getElementById(id);
+const setStatus = (t)=>{$('status').textContent=t;}
+const showErr = (msg)=>{ const e=$('err'); e.style.display='block'; e.textContent=msg; }
+const clearErr = ()=>{ const e=$('err'); e.style.display='none'; e.textContent=''; }
 
-const els = {
-  status: document.getElementById('status'),
-  out: document.getElementById('out'),
-  err: document.getElementById('err'),
-  btnGeo: document.getElementById('btnGeo'),
-  city: document.getElementById('city'),
-  btnCity: document.getElementById('btnCity'),
-};
-
-function showError(msg) {
-  els.err.style.display = 'block';
-  els.err.textContent = msg;
-}
-function clearError() {
-  els.err.style.display = 'none';
-  els.err.textContent = '';
-}
-
-async function getTioKey() {
-  // Your serverless function that returns the Tomorrow.io key
+async function getTioKey(){
   const url = `${API_BASE}/api/tio-key`;
-  const r = await fetch(url, { cache: 'no-store' });
-  if (!r.ok) {
-    throw new Error(`Failed to reach ${url} → ${r.status} ${r.statusText}`);
-  }
-  const data = await r.json();
-  if (!data || !data.key) throw new Error('tio-key endpoint returned no key.');
-  return data.key;
+  const r = await fetch(url, {cache:'no-store'});
+  if(!r.ok) throw new Error(`Failed to reach ${url} → ${r.status}`);
+  const j = await r.json();
+  if(!j || !j.key) throw new Error('tio-key endpoint returned no key.');
+  return j.key;
 }
 
-async function fetchWeatherByLatLon(lat, lon, apiKey) {
-  // Example Tomorrow.io v4 endpoint (adjust to your exact usage)
-  const url = `https://api.tomorrow.io/v4/weather/forecast?location=${lat},${lon}&timesteps=1h&units=metric&apikey=${encodeURIComponent(apiKey)}`;
+async function tmrForecastByLatLon(lat,lon,key){
+  const url = `https://api.tomorrow.io/v4/weather/forecast?location=${lat},${lon}&timesteps=1h&units=metric&apikey=${encodeURIComponent(key)}`;
   const r = await fetch(url);
-  if (!r.ok) throw new Error(`Tomorrow.io error: ${r.status} ${r.statusText}`);
+  if(!r.ok) throw new Error(`Tomorrow.io error: ${r.status} ${r.statusText}`);
   return r.json();
 }
-
-async function geocodeCity(name, apiKey) {
-  // Tomorrow.io geocoding convenience; swap for your preferred geocoder if different
-  const url = `https://api.tomorrow.io/v4/locations?search=${encodeURIComponent(name)}&apikey=${encodeURIComponent(apiKey)}`;
+async function tmrGeocodeCity(name,key){
+  const url = `https://api.tomorrow.io/v4/locations?search=${encodeURIComponent(name)}&apikey=${encodeURIComponent(key)}`;
   const r = await fetch(url);
-  if (!r.ok) throw new Error(`Geocode error: ${r.status} ${r.statusText}`);
-  const data = await r.json();
-  const loc = data?.locations?.[0];
-  if (!loc) throw new Error('City not found.');
-  return { lat: loc.lat, lon: loc.lon, resolved: `${loc.name}, ${loc.countryCode}` };
+  if(!r.ok) throw new Error(`Geocode error: ${r.status} ${r.statusText}`);
+  const j = await r.json();
+  const loc = j?.locations?.[0];
+  if(!loc) throw new Error('City not found.');
+  return { lat:loc.lat, lon:loc.lon, resolved:`${loc.name}, ${loc.countryCode}` };
 }
 
-async function boot() {
-  try {
-    clearError();
-    els.status.textContent = 'Booting…';
+function setWX(data){
+  // Pick the first hourly value
+  const point = data?.timelines?.hourly?.[0];
+  if(!point){ $('raw').textContent = JSON.stringify(data,null,2); return; }
+  const v = point.values || {};
+  $('mTemp').textContent = (v.temperature ?? '—') + ' °C';
+  $('mWind').textContent = (v.windSpeed ?? '—') + ' m/s';
+  $('mGust').textContent = (v.windGust ?? '—') + ' m/s';
+  $('mDir').textContent = (v.windDirection ?? '—') + '°';
+  $('mPop').textContent = (v.precipitationProbability ?? '—') + ' %';
+  $('mCloud').textContent = (v.cloudCover ?? '—') + ' %';
+  $('raw').textContent = JSON.stringify(data,null,2);
+}
 
-    const key = await getTioKey();
-    els.status.innerHTML = `API base: <b>${API_BASE || '(same-origin)'}</b> — key ✓`;
+/*** ====== MAP ====== ***/
+let map, meMarker, meAccuracy, trackId=null, lastFix=null;
+let osm, ocean, seamark;
 
-    els.btnGeo.onclick = async () => {
-      try {
-        clearError();
-        els.out.textContent = 'Getting location…';
-        const pos = await new Promise((res, rej) => {
-          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 10000 });
-        });
-        const { latitude, longitude } = pos.coords;
-        els.out.textContent = `Lat: ${latitude.toFixed(5)}, Lon: ${longitude.toFixed(5)} — fetching…`;
-        const data = await fetchWeatherByLatLon(latitude, longitude, key);
-        els.out.textContent = JSON.stringify(data, null, 2);
-      } catch (e) { showError(e.message); }
-    };
+function initMap(){
+  map = L.map('map',{center:[53.35,-6.26],zoom:10,minZoom:2});
 
-    els.btnCity.onclick = async () => {
-      try {
-        clearError();
-        const name = (els.city.value || '').trim();
-        if (!name) { showError('Type a city name.'); return; }
-        els.out.textContent = `Resolving “${name}”…`;
-        const loc = await geocodeCity(name, key);
-        els.out.textContent = `Found ${loc.resolved} (${loc.lat}, ${loc.lon}) — fetching…`;
-        const data = await fetchWeatherByLatLon(loc.lat, loc.lon, key);
-        els.out.textContent = JSON.stringify(data, null, 2);
-      } catch (e) { showError(e.message); }
-    };
+  osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    maxZoom:19, attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
 
-    // Register SW (cache bump)
-    if ('serviceWorker' in navigator) {
-      try { await navigator.serviceWorker.register('./sw.js?v=4'); } catch {}
+  // Esri World Ocean (bathymetry shading + labels)
+  ocean = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}',{
+    maxZoom:13, attribution: 'Esri Ocean'
+  });
+
+  // OpenSeaMap seamarks overlay
+  seamark = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',{
+    maxZoom:18, opacity:0.9, attribution:'OpenSeaMap'
+  });
+
+  // Controls
+  $('btnOSM').onclick = ()=>{ map.eachLayer(l=>map.removeLayer(l)); osm.addTo(map); if(meMarker) meMarker.addTo(map); if(meAccuracy) meAccuracy.addTo(map); };
+  $('btnOcean').onclick = ()=>{ map.eachLayer(l=>map.removeLayer(l)); ocean.addTo(map); if(meMarker) meMarker.addTo(map); if(meAccuracy) meAccuracy.addTo(map); };
+  $('btnSeamark').onclick = ()=>{ seamark.addTo(map); };
+
+  $('btnFull').onclick = ()=>{
+    const el = $('map');
+    if(!document.fullscreenElement){ el.requestFullscreen?.(); }
+    else{ document.exitFullscreen?.(); }
+  };
+  $('btnCenter').onclick = ()=>{ if(lastFix){ map.setView([lastFix.coords.latitude,lastFix.coords.longitude], Math.max(map.getZoom(), 14)); } };
+}
+
+/*** ====== GEO / SPEEDO ====== ***/
+const R = 6371000;
+function toRad(d){ return d*Math.PI/180; }
+function haversine(a,b){
+  const φ1=toRad(a.lat), φ2=toRad(b.lat), dφ=toRad(b.lat-a.lat), dλ=toRad(b.lon-a.lon);
+  const s = Math.sin(dφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+function msToKn(ms){ return (ms*1.943844).toFixed(1); }
+function setNeedle(kn){
+  // 0 kn at 180deg (left), 50 kn at 0deg (right)
+  const clamped = Math.max(0, Math.min(50, parseFloat(kn)||0));
+  const deg = 180 - (clamped/50)*180;
+  $('needle').style.transform = `translateX(-50%) rotate(${deg}deg)`;
+  $('spd').textContent = (+clamped).toFixed(1);
+}
+
+function updateMeMarker(lat,lon,acc,brg){
+  if(!meMarker){
+    meMarker = L.marker([lat,lon]).addTo(map);
+    meAccuracy = L.circle([lat,lon],{radius:acc||0,color:'#3b82f6',fillColor:'#3b82f6',fillOpacity:0.1}).addTo(map);
+  }else{
+    meMarker.setLatLng([lat,lon]);
+    meAccuracy.setLatLng([lat,lon]).setRadius(acc||0);
+  }
+  $('pLat').textContent = lat.toFixed(5);
+  $('pLon').textContent = lon.toFixed(5);
+  $('pAcc').textContent = (acc? acc.toFixed(0)+' m' : '—');
+  $('pBrg').textContent = (Number.isFinite(brg)? Math.round(brg)+'°' : '—');
+}
+
+function startTracking(){
+  if(trackId) return;
+  trackId = navigator.geolocation.watchPosition(pos=>{
+    lastFix = pos;
+    const {latitude:lat, longitude:lon, accuracy:acc, heading, speed} = pos.coords;
+    updateMeMarker(lat,lon,acc,heading);
+    // Speed: prefer native m/s; fallback to haversine/time
+    let mps = Number.isFinite(speed) && speed!==null ? speed : null;
+    if(!mps && window.__prevFix){
+      const dt = (pos.timestamp - window.__prevFix.timestamp)/1000;
+      if(dt>0){
+        const d = haversine({lat:window.__prevFix.coords.latitude,lon:window.__prevFix.coords.longitude},{lat,lon});
+        mps = d/dt;
+      }
     }
+    window.__prevFix = pos;
+    setNeedle(msToKn(mps||0));
+  }, err=>{
+    showErr('GPS error: '+err.message);
+  }, {enableHighAccuracy:true, maximumAge:0, timeout:15000});
+  $('btnTrack').textContent = 'Tracking…';
+}
+function stopTracking(){
+  if(trackId){ navigator.geolocation.clearWatch(trackId); trackId=null; $('btnTrack').textContent='Start tracking'; }
+}
+$('btnTrack').onclick = ()=> trackId ? stopTracking() : startTracking();
 
-  } catch (e) {
-    showError(
-      `Startup failed: ${e.message}\n\nIf you are on GitHub Pages, make sure the Vercel deployment is live:\n${VERCEL_ORIGIN}`
-    );
-    els.status.textContent = 'Failed to boot.';
+/*** ====== WEATHER CONTROLS ====== ***/
+async function boot(){
+  try{
+    clearErr();
+    setStatus('Booting…');
+    initMap();
+    const key = await getTioKey();
+    $('status').innerHTML = `API base: <b>${API_BASE || '(same-origin)'}</b> — <span class="good">key ✓</span>`;
+
+    $('btnGeo').onclick = async ()=>{
+      try{
+        clearErr();
+        const pos = await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{enableHighAccuracy:true, timeout:10000}));
+        const {latitude,longitude} = pos.coords;
+        const data = await tmrForecastByLatLon(latitude,longitude,key);
+        setWX(data);
+        map.setView([latitude,longitude], 11);
+      }catch(e){ showErr(e.message); }
+    };
+    $('btnCity').onclick = async ()=>{
+      try{
+        clearErr();
+        const name = ($('city').value||'').trim();
+        if(!name) return showErr('Type a city.');
+        const loc = await tmrGeocodeCity(name,key);
+        const data = await tmrForecastByLatLon(loc.lat,loc.lon,key);
+        setWX(data);
+        map.setView([loc.lat,loc.lon], 9);
+      }catch(e){ showErr(e.message); }
+    };
+  }catch(e){
+    showErr(`Startup failed: ${e.message}`);
+    setStatus('Failed to boot.');
   }
 }
-
 boot();
 </script>
 </body>
