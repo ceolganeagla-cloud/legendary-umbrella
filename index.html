@@ -7,9 +7,9 @@
 <link rel="icon" href="favicon.ico">
 <meta name="theme-color" content="#0a0f15">
 
-<!-- Leaflet -->
+<!-- Leaflet (sync load; no defer so L exists before our code runs) -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <style>
   :root{
@@ -25,7 +25,7 @@
   main{display:grid;grid-template-columns:1fr;gap:12px;padding:12px;max-width:1100px;margin:0 auto}
   @media(min-width:1000px){ main{grid-template-columns:1fr 380px;} }
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
-  #map{height:60vh;border-radius:12px}
+  #map{height:60vh;min-height:420px;border-radius:12px}
   .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   button,.btn{cursor:pointer;border:1px solid var(--line);background:#111a27;color:var(--ink);border-radius:10px;padding:8px 12px}
   input{background:#0e1320;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:8px 10px;min-width:220px}
@@ -35,17 +35,18 @@
   .metric{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:14px}
   .metric b{color:var(--ink)}
   .muted{color:var(--muted)}
-  /* Speedo */
+  .btn.active{ outline:2px solid var(--accent); }
+  .chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin-right:6px;background:#0e1724}
+
+  /* Speedometer */
   .speedo{display:grid;place-items:center;padding:16px}
-  .gauge{width:220px;height:110px;background:
-    conic-gradient(#1f2b3a 0 180deg);
+  .gauge{width:220px;height:110px;background:conic-gradient(#1f2b3a 0 180deg);
     border-bottom-left-radius:220px;border-bottom-right-radius:220px;position:relative;border:1px solid var(--line)}
   .needle{position:absolute;left:50%;bottom:0;transform-origin:bottom center;width:2px;height:100px;background:#eaeaea;box-shadow:0 0 6px rgba(255,255,255,.6)}
   .ticks{position:absolute;left:0;top:0;width:100%;height:100%}
   .speed-read{margin-top:8px;font-size:28px;font-weight:700;text-align:center}
   .units{font-size:12px;color:var(--muted);text-align:center;margin-top:-6px}
-  .chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin-right:6px;background:#0e1724}
-  .rightcol .card{margin-bottom:12px}
+  .veh{ filter: drop-shadow(0 0 2px rgba(0,0,0,.6)); }
 </style>
 </head>
 <body>
@@ -67,11 +68,13 @@
         <button id="btnOSM" class="btn">OSM</button>
         <button id="btnOcean" class="btn">Ocean</button>
         <button id="btnSeamark" class="btn">Seamarks</button>
+        <button id="btnAircraft" class="btn">Aircraft</button>
+        <button id="btnBoats" class="btn">Boats</button>
       </div>
       <div id="map"></div>
       <div class="muted" style="margin-top:6px">
-        Basemaps: <span class="chip">OpenStreetMap</span> <span class="chip">Esri World Ocean</span> & overlay <span class="chip">OpenSeaMap Seamarks</span>.
-        Ocean basemap shows bathymetry shading; seamarks add buoys, beacons, channels.
+        Basemaps: <span class="chip">OpenStreetMap</span> <span class="chip">Esri World Ocean</span> & overlay
+        <span class="chip">OpenSeaMap Seamarks</span>. Ocean basemap shows bathymetry shading; seamarks add buoys, beacons, channels.
       </div>
     </div>
 
@@ -99,13 +102,9 @@
   <aside class="rightcol">
     <div class="card speedo">
       <div class="gauge" id="gauge">
-        <div class="needle" id="needle" style="transform:translateX(-50%) rotate(0deg)"></div>
+        <div class="needle" id="needle" style="transform:translateX(-50%) rotate(180deg)"></div>
         <svg class="ticks" viewBox="0 0 100 50" preserveAspectRatio="none">
-          <!-- simple ticks -->
           <g stroke="#334a63" stroke-width="0.6">
-            <!-- 0..50kn every 5 -->
-            <!-- 0 at left (180deg), 50 at right (0deg) -->
-            <!-- draw 11 ticks -->
             <line x1="5" y1="48" x2="5" y2="44"/>
             <line x1="15" y1="48" x2="15" y2="44"/>
             <line x1="25" y1="48" x2="25" y2="44"/>
@@ -150,6 +149,7 @@ const setStatus = (t)=>{$('status').textContent=t;}
 const showErr = (msg)=>{ const e=$('err'); e.style.display='block'; e.textContent=msg; }
 const clearErr = ()=>{ const e=$('err'); e.style.display='none'; e.textContent=''; }
 
+/*** ====== WEATHER HELPERS ====== ***/
 async function getTioKey(){
   const url = `${API_BASE}/api/tio-key`;
   const r = await fetch(url, {cache:'no-store'});
@@ -158,7 +158,6 @@ async function getTioKey(){
   if(!j || !j.key) throw new Error('tio-key endpoint returned no key.');
   return j.key;
 }
-
 async function tmrForecastByLatLon(lat,lon,key){
   const url = `https://api.tomorrow.io/v4/weather/forecast?location=${lat},${lon}&timesteps=1h&units=metric&apikey=${encodeURIComponent(key)}`;
   const r = await fetch(url);
@@ -174,9 +173,7 @@ async function tmrGeocodeCity(name,key){
   if(!loc) throw new Error('City not found.');
   return { lat:loc.lat, lon:loc.lon, resolved:`${loc.name}, ${loc.countryCode}` };
 }
-
 function setWX(data){
-  // Pick the first hourly value
   const point = data?.timelines?.hourly?.[0];
   if(!point){ $('raw').textContent = JSON.stringify(data,null,2); return; }
   const v = point.values || {};
@@ -195,32 +192,31 @@ let osm, ocean, seamark;
 
 function initMap(){
   map = L.map('map',{center:[53.35,-6.26],zoom:10,minZoom:2});
-
+  // basemaps
   osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
     maxZoom:19, attribution: '&copy; OpenStreetMap'
   }).addTo(map);
-
-  // Esri World Ocean (bathymetry shading + labels)
   ocean = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}',{
     maxZoom:13, attribution: 'Esri Ocean'
   });
-
-  // OpenSeaMap seamarks overlay
+  // overlay
   seamark = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',{
     maxZoom:18, opacity:0.9, attribution:'OpenSeaMap'
   });
 
-  // Controls
-  $('btnOSM').onclick = ()=>{ map.eachLayer(l=>map.removeLayer(l)); osm.addTo(map); if(meMarker) meMarker.addTo(map); if(meAccuracy) meAccuracy.addTo(map); };
-  $('btnOcean').onclick = ()=>{ map.eachLayer(l=>map.removeLayer(l)); ocean.addTo(map); if(meMarker) meMarker.addTo(map); if(meAccuracy) meAccuracy.addTo(map); };
+  // buttons
+  $('btnOSM').onclick   = ()=>{ map.eachLayer(l=>map.removeLayer(l)); osm.addTo(map); if(meMarker) meMarker.addTo(map); if(meAccuracy) meAccuracy.addTo(map); if(map.hasLayer(aircraftLayer)) aircraftLayer.addTo(map); if(map.hasLayer(boatsLayer)) boatsLayer.addTo(map); };
+  $('btnOcean').onclick = ()=>{ map.eachLayer(l=>map.removeLayer(l)); ocean.addTo(map); if(meMarker) meMarker.addTo(map); if(meAccuracy) meAccuracy.addTo(map); if(map.hasLayer(aircraftLayer)) aircraftLayer.addTo(map); if(map.hasLayer(boatsLayer)) boatsLayer.addTo(map); };
   $('btnSeamark').onclick = ()=>{ seamark.addTo(map); };
-
   $('btnFull').onclick = ()=>{
     const el = $('map');
     if(!document.fullscreenElement){ el.requestFullscreen?.(); }
     else{ document.exitFullscreen?.(); }
   };
   $('btnCenter').onclick = ()=>{ if(lastFix){ map.setView([lastFix.coords.latitude,lastFix.coords.longitude], Math.max(map.getZoom(), 14)); } };
+
+  // size fix after first paint
+  setTimeout(()=> map.invalidateSize(), 0);
 }
 
 /*** ====== GEO / SPEEDO ====== ***/
@@ -231,15 +227,13 @@ function haversine(a,b){
   const s = Math.sin(dφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
   return 2*R*Math.asin(Math.sqrt(s));
 }
-function msToKn(ms){ return (ms*1.943844).toFixed(1); }
+function msToKn(ms){ return Number(ms*1.943844||0).toFixed(1); }
 function setNeedle(kn){
-  // 0 kn at 180deg (left), 50 kn at 0deg (right)
-  const clamped = Math.max(0, Math.min(50, parseFloat(kn)||0));
-  const deg = 180 - (clamped/50)*180;
+  const k = Math.max(0, Math.min(50, parseFloat(kn)||0));
+  const deg = 180 - (k/50)*180; // 0→180deg, 50→0deg
   $('needle').style.transform = `translateX(-50%) rotate(${deg}deg)`;
-  $('spd').textContent = (+clamped).toFixed(1);
+  $('spd').textContent = k.toFixed(1);
 }
-
 function updateMeMarker(lat,lon,acc,brg){
   if(!meMarker){
     meMarker = L.marker([lat,lon]).addTo(map);
@@ -253,14 +247,13 @@ function updateMeMarker(lat,lon,acc,brg){
   $('pAcc').textContent = (acc? acc.toFixed(0)+' m' : '—');
   $('pBrg').textContent = (Number.isFinite(brg)? Math.round(brg)+'°' : '—');
 }
-
 function startTracking(){
   if(trackId) return;
   trackId = navigator.geolocation.watchPosition(pos=>{
     lastFix = pos;
     const {latitude:lat, longitude:lon, accuracy:acc, heading, speed} = pos.coords;
     updateMeMarker(lat,lon,acc,heading);
-    // Speed: prefer native m/s; fallback to haversine/time
+    // speed: prefer native m/s; fallback to distance/time
     let mps = Number.isFinite(speed) && speed!==null ? speed : null;
     if(!mps && window.__prevFix){
       const dt = (pos.timestamp - window.__prevFix.timestamp)/1000;
@@ -271,9 +264,8 @@ function startTracking(){
     }
     window.__prevFix = pos;
     setNeedle(msToKn(mps||0));
-  }, err=>{
-    showErr('GPS error: '+err.message);
-  }, {enableHighAccuracy:true, maximumAge:0, timeout:15000});
+  }, err=> showErr('GPS error: '+err.message),
+  { enableHighAccuracy:true, maximumAge:0, timeout:15000 });
   $('btnTrack').textContent = 'Tracking…';
 }
 function stopTracking(){
@@ -281,7 +273,89 @@ function stopTracking(){
 }
 $('btnTrack').onclick = ()=> trackId ? stopTracking() : startTracking();
 
-/*** ====== WEATHER CONTROLS ====== ***/
+/*** ======= LIVE LAYERS: AIRCRAFT & BOATS ======= */
+let aircraftLayer = L.layerGroup();
+let boatsLayer = L.layerGroup();
+let aircraftTimer = null, boatsTimer = null;
+function makeIcon(color='#aee'){
+  return L.divIcon({
+    className: 'veh',
+    html: `<div style="width:12px;height:12px;border-radius:50%;
+      background:${color};border:2px solid #0a0f15;box-shadow:0 0 6px rgba(255,255,255,.6)"></div>`,
+    iconSize: [12,12], iconAnchor: [6,6]
+  });
+}
+
+// AIRCRAFT via OpenSky (proxied by Vercel api/opensky.js)
+async function fetchAircraftBBox(){
+  const b = map.getBounds();
+  const n=b.getNorth(), s=b.getSouth(), e=b.getEast(), w=b.getWest();
+  const url = `${API_BASE}/api/opensky?n=${n}&s=${s}&e=${e}&w=${w}`;
+  const r = await fetch(url, { cache:'no-store' });
+  if(!r.ok) throw new Error('opensky '+r.status);
+  return r.json();
+}
+async function refreshAircraft(){
+  try{
+    const data = await fetchAircraftBBox();
+    aircraftLayer.clearLayers();
+    const states = data.states || [];
+    for(const s of states){
+      const callsign = (s[1]||'').trim();
+      const lat = s[6], lon = s[5];
+      const track = s[10]; // degrees
+      const gs = s[9];     // m/s ground speed
+      if(lat==null || lon==null) continue;
+      const m = L.marker([lat,lon], { icon: makeIcon('#7dd3fc') })
+        .bindTooltip(`${callsign || 'N/A'}\n${(gs? (gs*1.943844).toFixed(1)+' kn' : '—')} @ ${track==null?'—':Math.round(track)+'°'}`);
+      m.addTo(aircraftLayer);
+    }
+  }catch(e){ console.warn(e); }
+}
+function toggleAircraft(){
+  if(map.hasLayer(aircraftLayer)){
+    map.removeLayer(aircraftLayer);
+    if(aircraftTimer) { clearInterval(aircraftTimer); aircraftTimer=null; }
+    $('btnAircraft').classList.remove('active');
+  }else{
+    aircraftLayer.addTo(map);
+    refreshAircraft();
+    aircraftTimer = setInterval(refreshAircraft, 10000); // every 10s
+    $('btnAircraft').classList.add('active');
+  }
+}
+$('btnAircraft').onclick = toggleAircraft;
+
+// BOATS via your AIS proxy (requires AIS_PROXY_URL env var on Vercel)
+async function refreshBoats(){
+  try{
+    const r = await fetch(`${API_BASE}/api/ais`, { cache: 'no-store' });
+    if(!r.ok) throw new Error('ais '+r.status);
+    const list = await r.json(); // expect array [{lat,lon,cog,sog,name,mmsi}, ...]
+    boatsLayer.clearLayers();
+    (list||[]).forEach(v=>{
+      if(v.lat==null || v.lon==null) return;
+      const m = L.marker([v.lat, v.lon], { icon: makeIcon('#86efac') })
+        .bindTooltip(`${v.name||v.mmsi||'Vessel'}\n${v.sog!=null? v.sog+' kn':'—'} @ ${v.cog!=null? Math.round(v.cog)+'°':'—'}`);
+      m.addTo(boatsLayer);
+    });
+  }catch(e){ console.warn(e); }
+}
+function toggleBoats(){
+  if(map.hasLayer(boatsLayer)){
+    map.removeLayer(boatsLayer);
+    if(boatsTimer){ clearInterval(boatsTimer); boatsTimer=null; }
+    $('btnBoats').classList.remove('active');
+  }else{
+    boatsLayer.addTo(map);
+    refreshBoats();
+    boatsTimer = setInterval(refreshBoats, 15000); // every 15s
+    $('btnBoats').classList.add('active');
+  }
+}
+$('btnBoats').onclick = toggleBoats;
+
+/*** ====== WEATHER CONTROLS / BOOT ====== ***/
 async function boot(){
   try{
     clearErr();
@@ -316,7 +390,15 @@ async function boot(){
     setStatus('Failed to boot.');
   }
 }
-boot();
+
+// Ensure Leaflet + DOM are ready
+document.addEventListener('DOMContentLoaded', () => {
+  if (!window.L) {
+    window.addEventListener('load', boot, { once: true });
+  } else {
+    boot();
+  }
+});
 </script>
 </body>
 </html>
