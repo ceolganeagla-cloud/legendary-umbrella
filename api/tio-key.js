@@ -1,13 +1,23 @@
-// api/tio-key.js
-export default function handler(req, res) {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+// /api/tio-key.js
+export const config = { runtime: 'edge' };
 
-  const key = process.env.TOMORROW_IO_KEY;
-  if (!key) return res.status(500).json({ error: 'Missing TOMORROW_IO_KEY env var' });
+const CORS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, OPTIONS',
+  'access-control-allow-headers': 'Content-Type',
+};
 
-  res.status(200).json({ key });
+export default async function handler(req) {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
+
+  const key = process.env.TOMORROW_IO_KEY || '';
+  if (!key) {
+    return new Response(JSON.stringify({ error: 'Missing TOMORROW_IO_KEY' }), {
+      status: 500,
+      headers: { 'content-type': 'application/json', ...CORS },
+    });
+  }
+  return new Response(JSON.stringify({ key }), {
+    headers: { 'content-type': 'application/json', ...CORS },
+  });
 }
