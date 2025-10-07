@@ -11,10 +11,13 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
+<!-- SunCalc for sun/moon times (tiny lib) -->
+<script src="https://unpkg.com/suncalc@1.9.0/suncalc.js"></script>
+
 <style>
   :root{
     --bg:#0a0f15; --panel:#0f1620; --card:#111a27; --line:#1b2a3b;
-    --ink:#e9f0f8; --muted:#9fb2c8; --accent:#22c55e; --warn:#ef4444;
+    --ink:#e9f0f8; --muted:#b6c6d8; --accent:#22c55e; --warn:#ef4444;
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
@@ -22,12 +25,11 @@
   header h1{font-size:18px;margin:0}
   .brand{padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:#0d1a26}
   .status{margin-left:auto;font-size:12px;color:var(--muted)}
-  main{display:grid;grid-template-columns:1fr;gap:12px;padding:12px;max-width:1100px;margin:0 auto}
-  @media(min-width:1000px){ main{grid-template-columns:1fr 380px;} }
+  main{display:grid;grid-template-columns:1fr;gap:12px;padding:12px;max-width:1200px;margin:0 auto}
+  @media(min-width:1100px){ main{grid-template-columns:1fr 380px;} }
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
-  #map{height:60vh;min-height:420px;border-radius:12px}
+  #map{height:64vh;min-height:420px;border-radius:12px}
   .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .muted{color:#b6c6d8}
   button,.btn{
     border:1px solid var(--line);background:#111a27;color:var(--ink);
     border-radius:12px;padding:10px 12px;font:inherit;line-height:1;display:inline-flex;align-items:center;gap:.5rem
@@ -37,7 +39,6 @@
   input{background:#0e1320;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:8px 10px;min-width:220px}
   pre{white-space:pre-wrap;max-height:42vh;overflow:auto;background:#0b121c;border-radius:10px;padding:10px;border:1px solid var(--line)}
   .error{background:#2a0f0f;border-color:#5a1d1d}
-  .good{color:var(--accent)}
   .metric{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:14px}
   .metric b{color:var(--ink)}
   .chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin-right:6px;background:#0e1724}
@@ -56,13 +57,14 @@
   /* Loading pill */
   .loading-pill{display:none;align-items:center;gap:.5rem;font-size:12px;background:#0e1724;border:1px solid var(--line);color:var(--ink);padding:6px 10px;border-radius:999px}
   .loading-pill.show{display:inline-flex}
+  /* Forecast strip */
+  .forecast{display:flex;gap:8px;overflow:auto;padding-top:8px}
+  .fx{min-width:96px;border:1px solid var(--line);border-radius:10px;padding:6px;background:#0b121c}
+  .fx b{display:block;font-size:13px;margin-bottom:4px}
   /* Legend */
   .legend{position:absolute;z-index:500;bottom:10px;left:10px;background:#0e1724;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:8px 10px;font-size:12px}
   .legend .row{display:flex;align-items:center;gap:6px;margin:4px 0}
-  /* Forecast strip */
-  .forecast{display:flex;gap:8px;overflow:auto;padding-top:8px}
-  .fx{min-width:90px;border:1px solid var(--line);border-radius:10px;padding:6px;background:#0b121c}
-  .fx b{display:block;font-size:13px;margin-bottom:4px}
+  /* Accessibility */
   button:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
   @media (prefers-reduced-motion: reduce){ *{animation:none!important;transition:none!important} }
 </style>
@@ -82,16 +84,22 @@
         <button id="btnTrack">Start tracking</button>
         <button id="btnCenter">Center on me</button>
         <button id="btnFull">Fullscreen map</button>
+        <button id="btnSpeedoToggle">Hide speedo</button>
         <span class="muted">Layers: </span>
         <button id="btnOSM" class="btn active">OSM</button>
         <button id="btnOcean" class="btn">Ocean</button>
         <button id="btnSat" class="btn">Satellite</button>
         <button id="btnSeamark" class="btn">Seamarks</button>
         <button id="btnDepth" class="btn">Depth</button>
+        <button id="btnRadar" class="btn">Rain Radar</button>
+        <button id="btnClouds" class="btn">Clouds</button>
         <button id="btnRivers" class="btn">Rivers</button>
+        <button id="btnLakes" class="btn">Lakes</button>
         <button id="btnHarbours" class="btn">Harbours</button>
         <button id="btnFuel" class="btn">Fuel</button>
         <button id="btnPiers" class="btn">Piers</button>
+        <button id="btnSlipway" class="btn">Slipways</button>
+        <button id="btnAirports" class="btn">Airports</button>
         <button id="btnAircraft" class="btn">Aircraft</button>
         <button id="btnBoats" class="btn">Boats</button>
       </div>
@@ -104,6 +112,7 @@
           <div class="row"><img alt="" width="16" height="16" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><rect width='16' height='10' y='3' rx='3' fill='%23ffffff'/></svg>"><span>Vessels (rotates with COG)</span></div>
           <div class="row"><span style="display:inline-block;width:16px;height:3px;background:#62b0ff"></span><span>Rivers/Waterways</span></div>
           <div class="row"><span style="display:inline-block;width:16px;height:16px;border:1px solid #9fb2c8"></span><span>Seamarks / Depth tiles</span></div>
+          <div class="row"><span style="display:inline-block;width:16px;height:16px;background:#224; border:1px solid #335"></span><span>Rain Radar</span></div>
         </div>
       </div>
 
@@ -111,7 +120,10 @@
         Basemaps: <span class="chip">OpenStreetMap</span> <span class="chip">Esri World Ocean</span>
         <span class="chip">Esri Imagery</span> • Overlays:
         <span class="chip">OpenSeaMap Seamarks</span> <span class="chip">Depth</span>
-        <span class="chip">Rivers</span> <span class="chip">Harbours</span> <span class="chip">Fuel</span> <span class="chip">Piers</span>.
+        <span class="chip">Rain Radar</span> <span class="chip">Clouds</span>
+        <span class="chip">Rivers</span> <span class="chip">Lakes</span>
+        <span class="chip">Harbours</span> <span class="chip">Fuel</span>
+        <span class="chip">Piers</span> <span class="chip">Slipways</span> <span class="chip">Airports</span>.
       </div>
     </div>
 
@@ -144,14 +156,20 @@
       <!-- mini forecast strip -->
       <div id="forecast" class="forecast" aria-label="Next 8 hours forecast"></div>
 
+      <div class="metric" style="margin-top:8px">
+        <div class="muted">Sun:</div><b id="sunInfo">—</b>
+        <div class="muted">Moon:</div><b id="moonInfo">—</b>
+        <div class="muted">Advisory:</div><b id="advInfo">—</b>
+      </div>
+
       <pre id="raw" style="display:none"></pre>
       <div id="err" class="card error" style="display:none;margin-top:8px"></div>
     </div>
   </section>
 
   <!-- RIGHT: Speedometer + Info -->
-  <aside class="rightcol">
-    <div class="card speedo">
+  <aside class="rightcol" id="rightCol">
+    <div class="card speedo" id="speedoCard">
       <div class="gauge" id="gauge">
         <div class="needle" id="needle" style="transform:translateX(-50%) rotate(180deg)"></div>
         <svg class="ticks" viewBox="0 0 100 50" preserveAspectRatio="none">
@@ -171,7 +189,7 @@
       </div>
       <div class="speed-read" id="spd">0.0</div>
       <div class="units">knots (kn)</div>
-      <div class="muted" style="text-align:center;margin-top:6px">Uses GPS speed; falls back to distance over time if speed is missing.</div>
+      <div class="muted" style="text-align:center;margin-top:6px">GPS speed; falls back to distance/time if missing.</div>
     </div>
 
     <div class="card">
@@ -204,9 +222,13 @@
 /*** ====== HOSTING / API BASE ====== ***/
 const ON_VERCEL = location.hostname.endsWith('.vercel.app');
 const ON_LOCAL = ['localhost','127.0.0.1'].includes(location.hostname);
-const VERCEL_ORIGIN = 'https://legendary-umbrella-ashen.vercel.app';
+const VERCEL_ORIGIN = 'https://legendary-umbrella-ashen.vercel.app'; // change to your Vercel if needed
 const API_BASE = (ON_VERCEL || ON_LOCAL) ? '' : VERCEL_ORIGIN;
 document.getElementById('apiBaseTxt').textContent = API_BASE || '(same-origin)';
+
+/*** ====== OPTIONAL KEYS FOR TILES ====== ***/
+// Set OpenWeather map tiles key below if you want the Clouds overlay enabled (leave empty to auto-disable)
+const OPENWEATHER_KEY = ""; // e.g., "abcdef1234567890"
 
 /*** ====== DOM utils & UX helpers ====== ***/
 const $ = id => document.getElementById(id);
@@ -218,33 +240,42 @@ const debounce = (fn, delay=400) => { let t; return (...a)=>{ clearTimeout(t); t
 
 /*** ====== WEATHER HELPERS ====== ***/
 let __TIO_KEY=null;
-async function getTioKeyCached(){ if(__TIO_KEY) return __TIO_KEY; const r=await fetch(`${API_BASE}/api/tio-key`,{cache:'no-store'}); if(!r.ok) throw new Error('tio-key '+r.status); const j=await r.json(); if(!j?.key) throw new Error('No key'); __TIO_KEY=j.key; return __TIO_KEY; }
+async function getTioKeyCached(){
+  if(__TIO_KEY) return __TIO_KEY;
+  const r=await fetch(`${API_BASE}/api/tio-key`,{cache:'no-store'});
+  if(!r.ok) throw new Error('tio-key '+r.status);
+  const j=await r.json(); if(!j?.key) throw new Error('No key');
+  __TIO_KEY=j.key; return __TIO_KEY;
+}
 async function tmrForecastByLatLon(lat,lon,key){
   const url=`https://api.tomorrow.io/v4/weather/forecast?location=${lat},${lon}&timesteps=1h&units=metric&apikey=${encodeURIComponent(key)}`;
   const r=await fetch(url); if(!r.ok) throw new Error('Tomorrow.io '+r.status); return r.json();
 }
 async function tmrGeocodeCity(name,key){
   const url=`https://api.tomorrow.io/v4/locations?search=${encodeURIComponent(name)}&apikey=${encodeURIComponent(key)}`;
-  const r=await fetch(url); if(!r.ok) throw new Error('Geocode '+r.status); const j=await r.json(); const loc=j?.locations?.[0]; if(!loc) throw new Error('City not found'); return { lat:loc.lat, lon:loc.lon, resolved:`${loc.name}, ${loc.countryCode}` };
+  const r=await fetch(url); if(!r.ok) throw new Error('Geocode '+r.status);
+  const j=await r.json(); const loc=j?.locations?.[0]; if(!loc) throw new Error('City not found');
+  return { lat:loc.lat, lon:loc.lon, resolved:`${loc.name}, ${loc.countryCode}` };
 }
 function setWX(data){
-  const point = data?.timelines?.hourly?.[0];
-  if(!point){ $('raw').style.display='block'; $('raw').textContent=JSON.stringify(data,null,2); return; }
-  const v = point.values || {};
-  $('mTemp').textContent = (v.temperature ?? '—') + ' °C';
-  $('mWind').textContent = (v.windSpeed ?? '—') + ' m/s';
-  $('mGust').textContent = (v.windGust ?? '—') + ' m/s';
-  $('mDir').textContent  = (v.windDirection ?? '—') + '°';
-  $('mPop').textContent  = (v.precipitationProbability ?? '—') + ' %';
-  $('mCloud').textContent= (v.cloudCover ?? '—') + ' %';
+  const p = data?.timelines?.hourly?.[0]?.values || {};
+  $('mTemp').textContent = (p.temperature ?? '—') + ' °C';
+  $('mWind').textContent = (p.windSpeed ?? '—') + ' m/s';
+  $('mGust').textContent = (p.windGust ?? '—') + ' m/s';
+  $('mDir').textContent  = (p.windDirection ?? '—') + '°';
+  $('mPop').textContent  = (p.precipitationProbability ?? '—') + ' %';
+  $('mCloud').textContent= (p.cloudCover ?? '—') + ' %';
   setForecastStrip(data);
+  // Frost advisory (next 8 hours if any hour <= 0°C)
+  const hours = data?.timelines?.hourly?.slice(0,8) || [];
+  const minT = Math.min(...hours.map(h=>h?.values?.temperature ?? 99));
+  const anyPrecip = hours.some(h=>(h?.values?.precipitationProbability ?? 0) > 40);
+  $('advInfo').textContent = (minT <= 0) ? (anyPrecip ? 'Frost + precip risk' : 'Frost risk') : '—';
 }
-function fmtHour(ts){
-  try{ const d=new Date(ts); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }catch{ return '—'; }
-}
+function fmtHour(ts){ try{ return new Date(ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});}catch{return '—';} }
 function setForecastStrip(data){
   const hourly = data?.timelines?.hourly || [];
-  const fx = hourly.slice(0,8); // next 8 hours
+  const fx = hourly.slice(0,8);
   const el = $('forecast'); el.innerHTML='';
   fx.forEach(h=>{
     const v=h.values||{};
@@ -263,11 +294,26 @@ function setForecastStrip(data){
   });
 }
 
+/*** ====== SUN / MOON ====== ***/
+function updateSunMoon(lat,lon){
+  try{
+    const now = new Date();
+    const times = SunCalc.getTimes(now, lat, lon);
+    const moon = SunCalc.getMoonIllumination(now);
+    const phaseNames=['New','Waxing crescent','First quarter','Waxing gibbous','Full','Waning gibbous','Last quarter','Waning crescent','New'];
+    const phaseIndex = Math.round(moon.phase*8);
+    $('sunInfo').textContent = `↑ ${times.sunrise?.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) || '—'}  ↓ ${times.sunset?.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) || '—'}`;
+    $('moonInfo').textContent= `${phaseNames[phaseIndex]} • ${(moon.fraction*100).toFixed(0)}%`;
+  }catch{ $('sunInfo').textContent='—'; $('moonInfo').textContent='—'; }
+}
+
 /*** ====== MAP & LAYERS ====== ***/
 let map, meMarker, meAccuracy, trackId=null, lastFix=null;
-let osm, ocean, sat, seamark, depthTiles;
-const riversLayer=L.layerGroup(), harboursLayer=L.layerGroup(), fuelLayer=L.layerGroup(), piersLayer=L.layerGroup();
-const aircraftLayer=L.layerGroup(), boatsLayer=L.layerGroup();
+let osm, ocean, sat, seamark, depthTiles, radarTiles, cloudTiles;
+
+const riversLayer=L.layerGroup(), lakesLayer=L.layerGroup(), harboursLayer=L.layerGroup(),
+      fuelLayer=L.layerGroup(), piersLayer=L.layerGroup(), slipLayer=L.layerGroup(),
+      airportLayer=L.layerGroup(), aircraftLayer=L.layerGroup(), boatsLayer=L.layerGroup();
 
 function initMap(){
   map = L.map('map',{center:[53.35,-6.26],zoom:10,minZoom:2});
@@ -279,25 +325,58 @@ function initMap(){
   seamark = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',{maxZoom:18,opacity:.95,attribution:'OpenSeaMap'});
   depthTiles = L.tileLayer('https://tiles.openseamap.org/depth/{z}/{x}/{y}.png',{maxZoom:18,opacity:.6,attribution:'OpenSeaMap Depth'});
 
+  // Rain radar (RainViewer public tiles)
+  radarTiles = L.tileLayer('https://tilecache.rainviewer.com/v2/radar/nowcast_0/256/{z}/{x}/{y}.png',{opacity:0.7, attribution:'RainViewer'});
+
+  // Clouds (OpenWeather – requires key)
+  if(OPENWEATHER_KEY){
+    cloudTiles = L.tileLayer(`https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=${OPENWEATHER_KEY}`,{opacity:0.5, attribution:'OpenWeather'});
+  } else {
+    $('btnClouds').disabled = true;
+    $('btnClouds').title = 'Set OPENWEATHER_KEY in the file to enable Clouds layer';
+  }
+
   // base buttons
   const baseBtns=[$('btnOSM'),$('btnOcean'),$('btnSat')];
   function setActive(btn){ baseBtns.forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
-  $('btnOSM').onclick   = ()=>{ [ocean,sat].forEach(l=>map.removeLayer(l)); if(!map.hasLayer(osm)) osm.addTo(map); setActive($('btnOSM')); };
-  $('btnOcean').onclick = ()=>{ [osm,sat].forEach(l=>map.removeLayer(l)); if(!map.hasLayer(ocean)) ocean.addTo(map); setActive($('btnOcean')); };
+  $('btnOSM').onclick   = ()=>{ [ocean,sat].forEach(l=>map.removeLayer(l)); if(!map.hasLayer(osm))   osm.addTo(map); setActive($('btnOSM')); };
+  $('btnOcean').onclick = ()=>{ [osm,sat].forEach(l=>map.removeLayer(l));   if(!map.hasLayer(ocean)) ocean.addTo(map); setActive($('btnOcean')); };
   $('btnSat').onclick   = ()=>{ [osm,ocean].forEach(l=>map.removeLayer(l)); if(!map.hasLayer(sat))   sat.addTo(map);   setActive($('btnSat')); };
 
-  // overlay buttons
   $('btnSeamark').onclick = ()=> toggleOverlay(seamark, 'btnSeamark');
   $('btnDepth').onclick   = ()=> toggleOverlay(depthTiles, 'btnDepth');
+  $('btnRadar').onclick   = ()=> toggleOverlay(radarTiles,'btnRadar');
+  $('btnClouds').onclick  = ()=> cloudTiles && toggleOverlay(cloudTiles,'btnClouds');
+
   $('btnRivers').onclick  = ()=> toggleDataLayer('rivers','btnRivers');
+  $('btnLakes').onclick   = ()=> toggleDataLayer('lakes','btnLakes');
   $('btnHarbours').onclick= ()=> toggleDataLayer('harbours','btnHarbours');
   $('btnFuel').onclick    = ()=> toggleDataLayer('fuel','btnFuel');
   $('btnPiers').onclick   = ()=> toggleDataLayer('piers','btnPiers');
+  $('btnSlipway').onclick = ()=> toggleDataLayer('slip','btnSlipway');
+  $('btnAirports').onclick= ()=> toggleDataLayer('airports','btnAirports');
 
   $('btnFull').onclick = ()=>{
     const el=$('map'); if(!document.fullscreenElement){ el.requestFullscreen?.(); } else { document.exitFullscreen?.(); }
   };
   $('btnCenter').onclick = ()=>{ if(lastFix){ map.setView([lastFix.coords.latitude,lastFix.coords.longitude], Math.max(14,map.getZoom())); } };
+
+  $('btnSpeedoToggle').onclick = ()=>{
+    const s=$('speedoCard'); const b=$('btnSpeedoToggle');
+    if(s.style.display==='none'){ s.style.display=''; b.textContent='Hide speedo'; }
+    else { s.style.display='none'; b.textContent='Show speedo'; }
+  };
+
+  // Update OSM overlays on move (debounced)
+  map.on('moveend', debounce(()=>{
+    reloadIf(riversLayer,loadRivers);
+    reloadIf(lakesLayer, loadLakes);
+    reloadIf(harboursLayer,loadHarbours);
+    reloadIf(fuelLayer,loadFuel);
+    reloadIf(piersLayer,loadPiers);
+    reloadIf(slipLayer,loadSlipways);
+    reloadIf(airportLayer,loadAirports);
+  }, 600));
 
   setTimeout(()=> map.invalidateSize(), 0);
 }
@@ -318,6 +397,7 @@ function updateMeMarker(lat,lon,acc,brg){
   else{ meMarker.setLatLng([lat,lon]); meAccuracy.setLatLng([lat,lon]).setRadius(acc||0); }
   $('pLat').textContent=lat.toFixed(5); $('pLon').textContent=lon.toFixed(5);
   $('pAcc').textContent=acc? acc.toFixed(0)+' m':'—'; $('pBrg').textContent=Number.isFinite(brg)? Math.round(brg)+'°':'—';
+  updateSunMoon(lat,lon);
 }
 let watchId=null, wxTimer=null;
 $('btnTrack').onclick = ()=>{
@@ -334,8 +414,8 @@ $('btnTrack').onclick = ()=>{
 
 /*** ======= LIVE LAYERS: AIRCRAFT & BOATS ======= */
 let aircraftTimer=null, boatsTimer=null;
-// crisp inline SVG icons (faster than PNG)
-const PLANE_SVG = "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path fill="white" d="M33 6l6 18 19 8-1 4-18-2-6 10 4 12h-4l-6-12-18 2-1-4 19-8 6-18z"/></svg>`);
+// SVG icons like FR24 (clean silhouette)
+const PLANE_SVG = "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path fill="white" d="M32 2l7 22 21 9-2 4-18-2-6 10 5 15h-6l-5-15-18 2-2-4 21-9z"/></svg>`);
 const BOAT_SVG  = "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path fill="white" d="M8 38l24-10 24 10-8 12H16z"/><path fill="white" d="M32 10l8 18H24z"/></svg>`);
 const planeIcon = L.icon({ iconUrl: PLANE_SVG, iconSize:[24,24], iconAnchor:[12,12] });
 const boatIcon  = L.icon({ iconUrl: BOAT_SVG,  iconSize:[24,24], iconAnchor:[12,12] });
@@ -386,55 +466,82 @@ async function refreshBoats(){
     });
   }catch(e){ console.warn(e); }
 }
-async function guardedToggle(toggleFn, btnId){
-  const btn=$(btnId); if(btn?.disabled) return; btn.disabled=true;
-  try{ await toggleFn(); btn.classList.toggle('active'); } catch(e){ showErr(e.message); } finally{ btn.disabled=false; }
-}
-$('btnAircraft').onclick = ()=> guardedToggle(()=> {
-  if(map.hasLayer(aircraftLayer)){ map.removeLayer(aircraftLayer); if(aircraftTimer){clearInterval(aircraftTimer); aircraftTimer=null;} }
-  else{ aircraftLayer.addTo(map); refreshAircraft(); aircraftTimer=setInterval(refreshAircraft, 10000); }
-}, 'btnAircraft');
+$('btnAircraft').onclick = async ()=>{
+  const b=$('btnAircraft'); if(b.disabled) return; b.disabled=true;
+  try{
+    if(map.hasLayer(aircraftLayer)){ map.removeLayer(aircraftLayer); if(aircraftTimer){clearInterval(aircraftTimer); aircraftTimer=null;} b.classList.remove('active'); }
+    else { aircraftLayer.addTo(map); await refreshAircraft(); aircraftTimer=setInterval(refreshAircraft, 10000); b.classList.add('active'); }
+  }finally{ b.disabled=false; }
+};
+$('btnBoats').onclick = async ()=>{
+  const b=$('btnBoats'); if(b.disabled) return; b.disabled=true;
+  try{
+    if(map.hasLayer(boatsLayer)){ map.removeLayer(boatsLayer); if(boatsTimer){clearInterval(boatsTimer); boatsTimer=null;} b.classList.remove('active'); }
+    else { boatsLayer.addTo(map); await refreshBoats(); boatsTimer=setInterval(refreshBoats, 15000); b.classList.add('active'); }
+  }finally{ b.disabled=false; }
+};
 
-$('btnBoats').onclick = ()=> guardedToggle(()=> {
-  if(map.hasLayer(boatsLayer)){ map.removeLayer(boatsLayer); if(boatsTimer){clearInterval(boatsTimer); boatsTimer=null;} }
-  else{ boatsLayer.addTo(map); refreshBoats(); boatsTimer=setInterval(refreshBoats, 15000); }
-}, 'btnBoats');
-
-/*** ====== OSM DATA: Rivers, Harbours, Fuel, Piers (Overpass) ====== */
+/*** ====== OSM DATA via Overpass: rivers, lakes, harbours, fuel, piers, slipways, airports ====== */
 const overpass = q => fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:q}).then(r=>{ if(!r.ok) throw new Error('Overpass '+r.status); return r.json(); });
 const bboxStr = ()=>{ const b=map.getBounds(); return `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`; };
 const reloadIf = (layer, loader) => { if(map.hasLayer(layer)) loader().catch(console.warn); };
-const debMove = debounce(()=>{ reloadIf(riversLayer,loadRivers); reloadIf(harboursLayer,loadHarbours); reloadIf(fuelLayer,loadFuel); reloadIf(piersLayer,loadPiers); }, 600);
-function toggleDataLayer(kind, btnId){
-  const btn=$(btnId);
-  const toggle=(layer, loader)=>{
-    if(map.hasLayer(layer)){ map.removeLayer(layer); btn.classList.remove('active'); map.off('moveend',debMove); map.on('moveend',debMove); }
-    else{ layer.addTo(map); loader().catch(console.warn); btn.classList.add('active'); map.off('moveend',debMove); map.on('moveend',debMove); }
-  };
-  if(kind==='rivers')   return toggle(riversLayer,  loadRivers);
-  if(kind==='harbours') return toggle(harboursLayer,loadHarbours);
-  if(kind==='fuel')     return toggle(fuelLayer,    loadFuel);
-  if(kind==='piers')    return toggle(piersLayer,   loadPiers);
+
+function addPOIs(layer, elements, emoji, nameFn){
+  elements.forEach(e=>{
+    const lat=e.lat??e.center?.lat, lon=e.lon??e.center?.lon; if(lat==null||lon==null) return;
+    const name = nameFn ? nameFn(e) : (e?.tags?.name || '—');
+    L.marker([lat,lon]).bindPopup(`<b>${emoji} ${name||'Unnamed'}</b>`).addTo(layer);
+  });
 }
+
 async function loadRivers(){
   const q=`[out:json][timeout:25];(way["waterway"~"river|stream|canal"](${bboxStr()}););out geom;`;
   const j=await overpass(q); riversLayer.clearLayers();
   (j.elements||[]).forEach(w=>{ if(!w.geometry) return; const latlngs=w.geometry.map(p=>[p.lat,p.lon]); L.polyline(latlngs,{color:'#62b0ff',weight:2,opacity:.85}).addTo(riversLayer); });
 }
+async function loadLakes(){
+  const q=`[out:json][timeout:25];(way["natural"="water"](${bboxStr()});relation["natural"="water"](${bboxStr()}););out center;`;
+  const j=await overpass(q); lakesLayer.clearLayers(); addPOIs(lakesLayer, j.elements||[], '🟦', e=>e.tags?.name||'Lake/Water');
+}
 async function loadHarbours(){
   const q=`[out:json][timeout:25];(node["seamark:type"="harbour"](${bboxStr()}); node["leisure"="marina"](${bboxStr()}););out center;`;
-  const j=await overpass(q); harboursLayer.clearLayers();
-  (j.elements||[]).forEach(e=>{ const lat=e.lat??e.center?.lat, lon=e.lon??e.center?.lon; if(lat==null||lon==null) return; L.marker([lat,lon]).bindPopup(`<b>⚓ ${e.tags?.name||'Harbour/Marina'}</b>`).addTo(harboursLayer); });
+  const j=await overpass(q); harboursLayer.clearLayers(); addPOIs(harboursLayer, j.elements||[], '⚓', e=>e.tags?.name||'Harbour/Marina');
 }
 async function loadFuel(){
   const q=`[out:json][timeout:25];(node["amenity"="fuel"](${bboxStr()}););out center;`;
-  const j=await overpass(q); fuelLayer.clearLayers();
-  (j.elements||[]).forEach(e=>{ const lat=e.lat??e.center?.lat, lon=e.lon??e.center?.lon; if(lat==null||lon==null) return; L.marker([lat,lon]).bindPopup(`<b>⛽ ${e.tags?.name||'Fuel'}</b>`).addTo(fuelLayer); });
+  const j=await overpass(q); fuelLayer.clearLayers(); addPOIs(fuelLayer, j.elements||[], '⛽', e=>e.tags?.name||'Fuel');
 }
 async function loadPiers(){
   const q=`[out:json][timeout:25];(way["man_made"="pier"](${bboxStr()}); relation["man_made"="pier"](${bboxStr()}););out center;`;
-  const j=await overpass(q); piersLayer.clearLayers();
-  (j.elements||[]).forEach(e=>{ const lat=e.lat??e.center?.lat, lon=e.lon??e.center?.lon; if(lat==null||lon==null) return; L.marker([lat,lon]).bindPopup(`<b>🛶 ${e.tags?.name||'Pier'}</b>`).addTo(piersLayer); });
+  const j=await overpass(q); piersLayer.clearLayers(); addPOIs(piersLayer, j.elements||[], '🛶', e=>e.tags?.name||'Pier');
+}
+async function loadSlipways(){
+  const q=`[out:json][timeout:25];(node["leisure"="slipway"](${bboxStr()}); node["amenity"="boat_ramp"](${bboxStr()}););out center;`;
+  const j=await overpass(q); slipLayer.clearLayers(); addPOIs(slipLayer, j.elements||[], '🛝', e=>e.tags?.name||'Slipway');
+}
+async function loadAirports(){
+  const q=`[out:json][timeout:25];(node["aeroway"="aerodrome"](${bboxStr()}); way["aeroway"="aerodrome"](${bboxStr()}););out center tags;`;
+  const j=await overpass(q); airportLayer.clearLayers();
+  (j.elements||[]).forEach(e=>{
+    const lat=e.lat??e.center?.lat, lon=e.lon??e.center?.lon; if(lat==null||lon==null) return;
+    const name=e.tags?.name||'Aerodrome', iata=e.tags?.iata||'', icao=e.tags?.icao||'';
+    L.marker([lat,lon]).bindPopup(`<b>🛬 ${name}</b><br>${iata? 'IATA: '+iata+'<br>':''}${icao? 'ICAO: '+icao:''}`).addTo(airportLayer);
+  });
+}
+
+function toggleDataLayer(kind, btnId){
+  const btn=$(btnId);
+  const toggle=(layer, loader)=>{
+    if(map.hasLayer(layer)){ map.removeLayer(layer); btn.classList.remove('active'); }
+    else{ layer.addTo(map); loader().catch(console.warn); btn.classList.add('active'); }
+  };
+  if(kind==='rivers')   return toggle(riversLayer,  loadRivers);
+  if(kind==='lakes')    return toggle(lakesLayer,   loadLakes);
+  if(kind==='harbours') return toggle(harboursLayer,loadHarbours);
+  if(kind==='fuel')     return toggle(fuelLayer,    loadFuel);
+  if(kind==='piers')    return toggle(piersLayer,   loadPiers);
+  if(kind==='slip')     return toggle(slipLayer,    loadSlipways);
+  if(kind==='airports') return toggle(airportLayer, loadAirports);
 }
 
 /*** ====== WEATHER CONTROLS / BOOT ====== ***/
@@ -446,7 +553,7 @@ $('btnCity').onclick = debounce(async ()=>{
     const key = await getTioKeyCached();
     const loc = await tmrGeocodeCity(name, key);
     const data = await tmrForecastByLatLon(loc.lat, loc.lon, key);
-    setWX(data); map.setView([loc.lat,loc.lon], 11);
+    setWX(data); map.setView([loc.lat,loc.lon], 11); updateSunMoon(loc.lat, loc.lon);
     setStatus(`Weather for ${loc.resolved || name}`);
   }catch(e){ showErr(e.message); setStatus('Failed to fetch weather.'); }
   finally{ showLoading('wxLoading', false); }
@@ -458,7 +565,7 @@ $('btnGeo').onclick = async ()=>{
     const pos = await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{enableHighAccuracy:true, timeout:10000}));
     const {latitude, longitude}=pos.coords; const key=await getTioKeyCached();
     const data = await tmrForecastByLatLon(latitude, longitude, key);
-    setWX(data); map.setView([latitude,longitude], 11); setStatus('Weather updated');
+    setWX(data); map.setView([latitude,longitude], 11); updateSunMoon(latitude, longitude); setStatus('Weather updated');
     if(wxTimer) clearInterval(wxTimer);
     wxTimer=setInterval(async ()=>{ try{
       const p = await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{enableHighAccuracy:true, timeout:10000}));
