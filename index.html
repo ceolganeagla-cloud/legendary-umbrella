@@ -1,54 +1,113 @@
-         <button id="btnSeamark" class="btn">Seamarks</button>
-        <span class="muted" style="padding:0 6px">Live</span>
-        <button id="btnAircraft" class="btn">Aircraft</button>
-        <button id="btnBoats" class="btn">Boats</button>
-      </div>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#0a0f15">
+<title>Legendary Umbrella — Marine Weather & Nav</title>
+<link rel="icon" href="favicon.ico">
 
-      <div id="map"></div>
+<!-- Leaflet + rotated marker -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-rotatedmarker@0.2.0/leaflet.rotatedMarker.min.js"></script>
 
-      <div class="muted" style="margin-top:8px">
-        Basemaps:
-        <span class="chip">OpenStreetMap</span>
-        <span class="chip">Esri World Ocean</span>
-        <span class="chip">Esri World Imagery (Satellite)</span>
-        <span class="chip">OpenTopoMap</span>
-        & overlays <span class="chip">OpenSeaMap Seamarks</span>,
-        <span class="chip">Depth Contours</span>, <span class="chip">Rivers/Waterways</span>.
-      </div>
+<style>
+  :root{
+    --bg:#0a0f15; --panel:#0f1620; --card:#111a27; --line:#1b2a3b;
+    --ink:#e9f0f8; --muted:#9fb2c8; --accent:#22c55e;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial}
+  header{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0}
+  .brand{padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:#0d1a26}
+  .status{margin-left:auto;font-size:12px;color:var(--muted)}
 
-      <details class="debug">
-        <summary>Debug</summary>
-        <div>API base: <span class="k" id="dbgBase">—</span></div>
-        <div>OpenSky URL: <span class="k" id="dbgOpenSky">—</span> <span id="dbgOpenSkyState"></span></div>
-        <div>AIS URL: <span class="k" id="dbgAis">—</span> <span id="dbgAisState"></span></div>
-        <div>Planes: <span class="k" id="dbgPlaneCount">0</span> | Boats: <span class="k" id="dbgBoatCount">0</span></div>
-        <pre id="raw" style="display:none"></pre>
-      </details>
+  main{display:grid;grid-template-columns:1fr;gap:12px;padding:12px;max-width:1100px;margin:0 auto}
+  @media(min-width:1000px){ main{grid-template-columns:1fr 360px;} }
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+  #map{height:68vh;min-height:440px;border-radius:12px}
+
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  button{cursor:pointer;border:1px solid var(--line);background:#111a27;color:var(--ink);border-radius:10px;padding:10px 12px}
+  input{background:#0e1320;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px;min-width:220px}
+  .metric{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:14px}
+  .metric b{color:var(--ink)}
+  .muted{color:var(--muted)}
+  .chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin-right:6px;background:#0e1724}
+  .error{background:#2a0f0f;border:1px solid #5a1d1d;color:#ffd6d6;border-radius:10px;padding:10px;display:none}
+
+  /* Speedo */
+  .speedo{display:grid;place-items:center;padding:16px}
+  .gauge{width:240px;height:120px;background:conic-gradient(#1f2b3a 0 180deg);
+    border-bottom-left-radius:240px;border-bottom-right-radius:240px;position:relative;border:1px solid var(--line)}
+  .needle{position:absolute;left:50%;bottom:0;transform-origin:bottom center;width:2px;height:108px;background:#eaeaea;box-shadow:0 0 6px rgba(255,255,255,.6)}
+  .ticks{position:absolute;left:0;top:0;width:100%;height:100%}
+  .speed-read{margin-top:10px;font-size:30px;font-weight:800;text-align:center}
+  .units{font-size:12px;color:var(--muted);text-align:center;margin-top:-6px}
+
+  /* Floating Layers button (never blocks map) */
+  .fab{
+    position:fixed;right:14px;bottom:14px;z-index:1200;
+    width:56px;height:56px;border-radius:999px;background:#0e1724;border:1px solid var(--line);
+    display:grid;place-items:center;font-weight:700;box-shadow:0 8px 16px rgba(0,0,0,.4)
+  }
+
+  /* Bottom sheet for layers (scrollable on mobile) */
+  .sheet{
+    position:fixed;left:0;right:0;bottom:0;z-index:1300;
+    background:#0c1522;border-top:1px solid var(--line);border-radius:14px 14px 0 0;
+    max-height:70vh;transform:translateY(100%);transition:.25s transform ease;
+    box-shadow:0 -20px 40px rgba(0,0,0,.5);padding:12px 14px 18px 14px;overflow:auto;
+  }
+  .sheet.open{transform:translateY(0)}
+  .sheet h3{margin:0 0 8px 0;font-size:16px}
+  .group{margin:10px 0;border:1px dashed #1e2a3b;padding:10px;border-radius:12px}
+  .group h4{margin:0 0 8px 0;font-size:14px;color:#cfe2ff}
+  .group label{display:block;margin:6px 0;font-size:14px}
+  .badge{font-size:12px;color:#9fb2c8;margin-left:6px}
+
+  details.debug{font-size:12px;color:var(--muted);margin-top:8px}
+  details.debug summary{cursor:pointer}
+  pre{white-space:pre-wrap;max-height:40vh;overflow:auto;background:#0b121c;border-radius:10px;padding:10px;border:1px solid var(--line);margin-top:6px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">Ceol Gan Eagla</div>
+  <h1>Legendary Umbrella — Marine Weather & Nav</h1>
+  <div class="status" id="status">Booting…</div>
+</header>
+
+<main>
+  <!-- LEFT -->
+  <section class="card">
+    <div class="toolbar">
+      <button id="btnTrack">Start tracking</button>
+      <button id="btnCenter">Center on me</button>
+      <button id="btnFull">Fullscreen</button>
     </div>
-
-    <div class="card" id="wxCard" style="margin-top:12px">
-      <div class="toolbar" style="gap:8px">
-        <button id="btnGeo" class="btn">Use my location</button>
-        <input id="city" placeholder="Enter city (e.g., Dublin)" inputmode="search" autocomplete="off"/>
-        <button id="btnCity" class="btn">Get weather</button>
-        <span class="muted">API base: <b id="apiBaseTxt">—</b></span>
-      </div>
-      <div class="metric">
-        <div class="muted">Temp:</div><b id="mTemp">—</b>
-        <div class="muted">Wind:</div><b id="mWind">—</b>
-        <div class="muted">Gust:</div><b id="mGust">—</b>
-        <div class="muted">Direction:</div><b id="mDir">—</b>
-        <div class="muted">Precip Prob:</div><b id="mPop">—</b>
-        <div class="muted">Cloud Cover:</div><b id="mCloud">—</b>
-      </div>
-      <div id="err" class="error"></div>
+    <div id="map"></div>
+    <div class="muted" style="margin-top:8px">
+      Basemaps: <span class="chip">OpenStreetMap</span> <span class="chip">Esri Ocean</span>
+      <span class="chip">Esri Imagery</span> <span class="chip">OpenTopoMap</span>
+      & overlays <span class="chip">Seamarks</span> <span class="chip">Depth</span> <span class="chip">Rivers</span> <span class="chip">Harbours</span> <span class="chip">Fuel</span> <span class="chip">Piers</span>.
     </div>
+    <details class="debug">
+      <summary>Debug</summary>
+      <div>API base: <span id="dbgBase">—</span></div>
+      <div>OpenSky URL: <span id="dbgOpenSky">—</span> <span id="dbgOpenSkyState"></span></div>
+      <div>AIS URL: <span id="dbgAis">—</span> <span id="dbgAisState"></span></div>
+      <div>Planes: <span id="dbgPlaneCount">0</span> | Boats: <span id="dbgBoatCount">0</span></div>
+      <pre id="raw" style="display:none"></pre>
+    </details>
   </section>
 
   <!-- RIGHT -->
-  <aside>
-    <div class="card speedo">
-      <div class="gauge" id="gauge">
+  <aside class="card">
+    <div class="speedo">
+      <div class="gauge">
         <div class="needle" id="needle" style="transform:translateX(-50%) rotate(180deg)"></div>
         <svg class="ticks" viewBox="0 0 100 50" preserveAspectRatio="none">
           <g stroke="#334a63" stroke-width="0.6">
@@ -67,257 +126,313 @@
       </div>
       <div class="speed-read" id="spd">0.0</div>
       <div class="units">knots (kn)</div>
-      <div class="muted" style="text-align:center;margin-top:6px">
-        Uses GPS speed; falls back to distance over time if speed is missing.
-      </div>
+      <div class="muted" style="text-align:center;margin-top:6px">Uses GPS speed; falls back to distance over time if speed is missing.</div>
     </div>
 
-    <div class="card">
-      <div class="muted">Position</div>
-      <div class="metric">
-        <div class="muted">Lat:</div><b id="pLat">—</b>
-        <div class="muted">Lon:</div><b id="pLon">—</b>
-        <div class="muted">Acc:</div><b id="pAcc">—</b>
-        <div class="muted">Bearing:</div><b id="pBrg">—</b>
-      </div>
+    <div class="metric">
+      <div class="muted">Lat:</div><b id="pLat">—</b>
+      <div class="muted">Lon:</div><b id="pLon">—</b>
+      <div class="muted">Acc:</div><b id="pAcc">—</b>
+      <div class="muted">Bearing:</div><b id="pBrg">—</b>
     </div>
+
+    <hr style="border-color:var(--line);opacity:.3;margin:12px 0">
+
+    <div class="toolbar">
+      <button id="btnGeo">Use my location</button>
+      <input id="city" placeholder="Enter city (e.g., Dublin)"/>
+      <button id="btnCity">Get weather</button>
+    </div>
+    <div class="metric" style="margin-top:8px">
+      <div class="muted">Temp:</div><b id="mTemp">—</b>
+      <div class="muted">Wind:</div><b id="mWind">—</b>
+      <div class="muted">Gust:</div><b id="mGust">—</b>
+      <div class="muted">Direction:</div><b id="mDir">—</b>
+      <div class="muted">Precip Prob:</div><b id="mPop">—</b>
+      <div class="muted">Cloud Cover:</div><b id="mCloud">—</b>
+    </div>
+    <div id="err" class="error"></div>
   </aside>
 </main>
 
+<!-- Floating Layers button and bottom sheet -->
+<button class="fab" id="openSheet" aria-label="Layers">☰</button>
+<div class="sheet" id="sheet">
+  <h3>Layers</h3>
+  <div class="group">
+    <h4>Basemap</h4>
+    <label><input type="radio" name="base" value="osm" checked> OpenStreetMap</label>
+    <label><input type="radio" name="base" value="ocean"> Esri World Ocean</label>
+    <label><input type="radio" name="base" value="sat"> Esri Imagery (Satellite)</label>
+    <label><input type="radio" name="base" value="topo"> OpenTopoMap</label>
+  </div>
+
+  <div class="group">
+    <h4>Overlays</h4>
+    <label><input type="checkbox" data-ov="seamark"> OpenSeaMap Seamarks</label>
+    <label><input type="checkbox" data-ov="depth"> Depth Contours</label>
+    <label><input type="checkbox" data-ov="water"> Rivers / Waterways</label>
+  </div>
+
+  <div class="group">
+    <h4>Live</h4>
+    <label><input type="checkbox" data-ov="planes"> Aircraft <span class="badge">(OpenSky)</span></label>
+    <label><input type="checkbox" data-ov="boats"> Boats / Ships <span class="badge">(AIS)</span></label>
+  </div>
+
+  <div class="group">
+    <h4>Harbour Services</h4>
+    <label><input type="checkbox" data-poi="harbours"> Harbours</label>
+    <label><input type="checkbox" data-poi="fuel"> Fuel</label>
+    <label><input type="checkbox" data-poi="piers"> Piers</label>
+    <div class="muted" style="margin-top:6px">Source: OpenStreetMap (live Overpass). Zoom & toggle to refresh.</div>
+  </div>
+</div>
+
 <script>
-/* ---------- HOSTING / API BASE ---------- */
+/* ---------- BASE / CONFIG ---------- */
 const ON_VERCEL = location.hostname.endsWith('.vercel.app');
 const ON_LOCAL = ['localhost','127.0.0.1'].includes(location.hostname);
 const VERCEL_ORIGIN = 'https://legendary-umbrella-ashen.vercel.app';
 const API_BASE = (ON_VERCEL || ON_LOCAL) ? '' : VERCEL_ORIGIN;
+const CONFIG = { DEMO: true }; // keep demo markers until feeds ready
+
 const $ = id => document.getElementById(id);
-$('apiBaseTxt').textContent = API_BASE || '(same-origin)';
 $('dbgBase').textContent = API_BASE || '(same-origin)';
-
 const setStatus = t => $('status').textContent=t;
-const showErr = msg => { const e=$('err'); e.style.display='block'; e.textContent=msg; }
-const clearErr = () => { const e=$('err'); e.style.display='none'; e.textContent=''; }
+const showErr = m => { const e=$('err'); e.style.display='block'; e.textContent=m; };
+const clearErr = () => { const e=$('err'); e.style.display='none'; e.textContent=''; };
 
-/* ---------- CONFIG ---------- */
-// DEMO true → show simulated planes/boats when feeds are empty/fail.
-// Turn DEMO false once your real feeds are good.
-const CONFIG = { DEMO: true };
-// Thunderforest key (optional, if you want TF Outdoors basemap)
-const TF_KEY = ""; // e.g. "abcd1234..."
+/* ---------- WEATHER ---------- */
+async function getTioKey(){ const r=await fetch(`${API_BASE}/api/tio-key`,{cache:'no-store'}); if(!r.ok)throw new Error('tio-key '+r.status); const j=await r.json(); if(!j.key)throw'No key'; return j.key; }
+async function tmrForecastByLatLon(lat,lon,key){ const r=await fetch(`https://api.tomorrow.io/v4/weather/forecast?location=${lat},${lon}&timesteps=1h&units=metric&apikey=${encodeURIComponent(key)}`); if(!r.ok)throw new Error('Tomorrow '+r.status); return r.json(); }
+async function tmrGeocodeCity(name,key){ const r=await fetch(`https://api.tomorrow.io/v4/locations?search=${encodeURIComponent(name)}&apikey=${encodeURIComponent(key)}`); if(!r.ok)throw new Error('Geocode '+r.status); const j=await r.json(); const loc=j?.locations?.[0]; if(!loc) throw'City not found'; return {lat:loc.lat,lon:loc.lon}; }
+function setWX(d){ const pt=d?.timelines?.hourly?.[0]; if(!pt) return; const v=pt.values||{}; mTemp.textContent=(v.temperature??'—')+' °C'; mWind.textContent=(v.windSpeed??'—')+' m/s'; mGust.textContent=(v.windGust??'—')+' m/s'; mDir.textContent=(v.windDirection??'—')+'°'; mPop.textContent=(v.precipitationProbability??'—')+' %'; mCloud.textContent=(v.cloudCover??'—')+' %'; }
 
+/* ---------- MAP ---------- */
 let map, meMarker, meAccuracy, trackId=null, lastFix=null;
-let osm, ocean, sat, topo, seamark;
-let aircraftLayer = L.layerGroup();
-let boatsLayer = L.layerGroup();
+let osm,ocean,sat,topo,seamark,depth,waterways;
+let aircraftLayer=L.layerGroup(), boatsLayer=L.layerGroup();
+let harbours=L.layerGroup(), fuel=L.layerGroup(), piers=L.layerGroup();
 
-/* ---------- WEATHER HELPERS ---------- */
-async function getTioKey(){
-  const url = `${API_BASE}/api/tio-key`;
-  const r = await fetch(url, {cache:'no-store'});
-  if(!r.ok) throw new Error(`Failed to reach ${url} → ${r.status}`);
-  const j = await r.json();
-  if(!j?.key) throw new Error('tio-key endpoint returned no key.');
-  return j.key;
-}
-async function tmrForecastByLatLon(lat,lon,key){
-  const url = `https://api.tomorrow.io/v4/weather/forecast?location=${lat},${lon}&timesteps=1h&units=metric&apikey=${encodeURIComponent(key)}`;
-  const r = await fetch(url); if(!r.ok) throw new Error(`Tomorrow.io ${r.status}`);
-  return r.json();
-}
-async function tmrGeocodeCity(name,key){
-  const url = `https://api.tomorrow.io/v4/locations?search=${encodeURIComponent(name)}&apikey=${encodeURIComponent(key)}`;
-  const r = await fetch(url); if(!r.ok) throw new Error(`Geocode ${r.status}`);
-  const j = await r.json(); const loc=j?.locations?.[0];
-  if(!loc) throw new Error('City not found.');
-  return { lat:loc.lat, lon:loc.lon, resolved:`${loc.name}, ${loc.countryCode}` };
-}
-function setWX(data){
-  const point = data?.timelines?.hourly?.[0];
-  if(!point) return;
-  const v = point.values || {};
-  $('mTemp').textContent = (v.temperature ?? '—') + ' °C';
-  $('mWind').textContent = (v.windSpeed ?? '—') + ' m/s';
-  $('mGust').textContent = (v.windGust ?? '—') + ' m/s';
-  $('mDir').textContent = (v.windDirection ?? '—') + '°';
-  $('mPop').textContent = (v.precipitationProbability ?? '—') + ' %';
-  $('mCloud').textContent = (v.cloudCover ?? '—') + ' %';
-  const dbgOpen = document.querySelector('details.debug')?.open;
-  $('raw').style.display = dbgOpen ? 'block' : 'none';
-  if (dbgOpen) $('raw').textContent = JSON.stringify(data,null,2);
-}
-
-/* ---------- MAP / LAYERS ---------- */
 function initMap(){
   map = L.map('map',{center:[53.35,-6.26],zoom:10,minZoom:2});
 
   // Basemaps
-  osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    maxZoom:19, attribution: '&copy; OpenStreetMap'
-  }).addTo(map);
-
-  ocean = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}',{
-    maxZoom:13, attribution: 'Tiles &copy; Esri Ocean'
-  });
-
-  sat = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
-    maxZoom:19, attribution: 'Imagery &copy; Esri World Imagery'
-  });
-
-  topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{
-    maxZoom:17, attribution: 'Map data &copy; OpenTopoMap'
-  });
-
-  // Optional Thunderforest Outdoors
-  const tfOutdoors = TF_KEY ? L.tileLayer(
-    `https://tile.thunderforest.com/outdoors/{z}/{x}/{y}.png?apikey=${TF_KEY}`, {
-      maxZoom:22, attribution: '&copy; Thunderforest, OpenStreetMap'
-    }
-  ) : null;
+  osm   = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+  ocean = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}',{maxZoom:13,attribution:'Tiles &copy; Esri Ocean'});
+  sat   = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Imagery &copy; Esri'});
+  topo  = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,attribution:'&copy; OpenTopoMap'});
 
   // Overlays
-  seamark = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',{
-    maxZoom:18, opacity:0.95, attribution:'Seamarks &copy; OpenSeaMap'
-  });
+  seamark   = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',{maxZoom:18,opacity:.95,attribution:'OpenSeaMap'});
+  depth     = L.tileLayer('https://tiles.openseamap.org/depth/{z}/{x}/{y}.png',{maxZoom:18,opacity:.6, attribution:'Depth &copy; OpenSeaMap'});
+  waterways = L.tileLayer('https://tile.openstreetmap.fr/hydro/{z}/{x}/{y}.png',{maxZoom:18,opacity:.7, attribution:'Hydro &copy; OSM France'});
 
-  const depth = L.tileLayer('https://tiles.openseamap.org/depth/{z}/{x}/{y}.png', {
-    maxZoom:18, opacity:0.6, attribution:'Depth &copy; OpenSeaMap'
-  });
-
-  const waterways = L.tileLayer('https://tile.openstreetmap.fr/hydro/{z}/{x}/{y}.png', {
-    maxZoom:18, opacity:0.7, attribution:'Hydro &copy; OSM France'
-  });
-
-  function readdLiveLayers(){
-    if(meMarker) meMarker.addTo(map);
-    if(meAccuracy) meAccuracy.addTo(map);
-    if(map.hasLayer(aircraftLayer)) aircraftLayer.addTo(map);
-    if(map.hasLayer(boatsLayer)) boatsLayer.addTo(map);
-  }
-  function switchBase(newBase){
-    map.eachLayer(l=>{
-      if(l!==seamark && l!==depth && l!==waterways && l!==aircraftLayer && l!==boatsLayer) {
-        map.removeLayer(l);
+  // Bottom sheet behaviour
+  const sheet=$('sheet'), open=$('openSheet');
+  open.onclick=()=>sheet.classList.toggle('open');
+  sheet.addEventListener('click',e=>{
+    // Basemap radio
+    if(e.target.name==='base'){
+      const v=e.target.value;
+      [osm,ocean,sat,topo].forEach(l=>map.removeLayer(l));
+      ({osm,ocean,sat,topo}[v]).addTo(map);
+    }
+    // Overlays
+    if(e.target.dataset?.ov){
+      const key=e.target.dataset.ov;
+      const layer=({seamark,depth,water:waterways,planes:aircraftLayer,boats:boatsLayer})[key];
+      if(e.target.checked){
+        layer.addTo(map);
+        if(key==='planes') startAircraft();
+        if(key==='boats')  startBoats();
+      }else{
+        map.removeLayer(layer);
+        if(key==='planes') stopAircraft();
+        if(key==='boats')  stopBoats();
       }
-    });
-    newBase.addTo(map);
-    readdLiveLayers();
-  }
+    }
+    // POIs (Overpass)
+    if(e.target.dataset?.poi){
+      const key=e.target.dataset.poi;
+      const layer=({harbours,fuel,piers})[key];
+      if(e.target.checked){ layer.addTo(map); refreshPOI(key); }
+      else map.removeLayer(layer);
+    }
+  });
 
-  $('btnOSM').onclick   = ()=> switchBase(osm);
-  $('btnOcean').onclick = ()=> switchBase(ocean);
-  $('btnSat').onclick   = ()=> switchBase(sat);
-  $('btnTopo').onclick  = ()=> switchBase(topo);
-  $('btnSeamark').onclick = ()=> seamark.addTo(map);
+  // Close sheet if user taps outside it
+  document.addEventListener('click',ev=>{
+    if (!sheet.contains(ev.target) && !open.contains(ev.target)) sheet.classList.remove('open');
+  });
 
-  // Leaflet layer control
-  const baseMaps = {"OSM":osm,"Esri Ocean":ocean,"Esri World Imagery (Satellite)":sat,"OpenTopoMap":topo};
-  if (tfOutdoors) baseMaps["Thunderforest Outdoors"] = tfOutdoors;
+  // utilities
+  $('btnFull').onclick=()=>{ const el=$('map'); if(!document.fullscreenElement) el.requestFullscreen?.(); else document.exitFullscreen?.(); }
+  $('btnCenter').onclick=()=>{ if(lastFix) map.setView([lastFix.coords.latitude,lastFix.coords.longitude], Math.max(map.getZoom(),14)); };
 
-  const overlays = {
-    "OpenSeaMap Seamarks": seamark,
-    "Depth Contours": depth,
-    "Rivers / Waterways": waterways,
-    "Aircraft": aircraftLayer,
-    "Boats": boatsLayer
-  };
-  L.control.layers(baseMaps, overlays, {collapsed:true}).addTo(map);
-
-  $('btnFull').onclick = ()=>{
-    const el = $('map');
-    if(!document.fullscreenElement){ el.requestFullscreen?.(); }
-    else{ document.exitFullscreen?.(); }
-  };
-  $('btnCenter').onclick = ()=>{ if(lastFix){ map.setView([lastFix.coords.latitude,lastFix.coords.longitude], Math.max(map.getZoom(), 14)); } };
-
-  setTimeout(()=> map.invalidateSize(), 0);
+  setTimeout(()=>map.invalidateSize(),0);
 }
 
-/* ---------- GEO / SPEEDO ---------- */
-const R = 6371000;
-const toRad = d=> d*Math.PI/180;
-const haversine = (a,b)=>{
-  const φ1=toRad(a.lat), φ2=toRad(b.lat), dφ=toRad(b.lat-a.lat), dλ=toRad(b.lon-a.lon);
-  const s = Math.sin(dφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
-  return 2*R*Math.asin(Math.sqrt(s));
-};
-const msToKn = ms => Number(ms*1.943844||0).toFixed(1);
-function setNeedle(kn){
-  const k = Math.max(0, Math.min(50, parseFloat(kn)||0));
-  const deg = 180 - (k/50)*180;
-  $('needle').style.transform = `translateX(-50%) rotate(${deg}deg)`;
-  $('spd').textContent = k.toFixed(1);
-}
+/* ---------- GEO + SPEEDO ---------- */
+const R=6371000, toRad=d=>d*Math.PI/180;
+const haversine=(a,b)=>{const φ1=toRad(a.lat),φ2=toRad(b.lat),dφ=toRad(b.lat-a.lat),dλ=toRad(b.lon-a.lon);const s=Math.sin(dφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;return 2*R*Math.asin(Math.sqrt(s));}
+const msToKn=ms=>Number(ms*1.943844||0).toFixed(1);
+function setNeedle(kn){ const k=Math.max(0,Math.min(50,parseFloat(kn)||0)); const deg=180-(k/50)*180; $('needle').style.transform=`translateX(-50%) rotate(${deg}deg)`; $('spd').textContent=k.toFixed(1); }
 function updateMeMarker(lat,lon,acc,brg){
-  if(!meMarker){
-    meMarker = L.marker([lat,lon]).addTo(map);
-    meAccuracy = L.circle([lat,lon],{radius:acc||0,color:'#3b82f6',fillColor:'#3b82f6',fillOpacity:0.1}).addTo(map);
-  }else{
-    meMarker.setLatLng([lat,lon]);
-    meAccuracy.setLatLng([lat,lon]).setRadius(acc||0);
-  }
-  $('pLat').textContent = lat.toFixed(5);
-  $('pLon').textContent = lon.toFixed(5);
-  $('pAcc').textContent = (acc? acc.toFixed(0)+' m' : '—');
-  $('pBrg').textContent = (Number.isFinite(brg)? Math.round(brg)+'°' : '—');
+  if(!meMarker){ meMarker=L.marker([lat,lon]).addTo(map); meAccuracy=L.circle([lat,lon],{radius:acc||0,color:'#3b82f6',fillColor:'#3b82f6',fillOpacity:.1}).addTo(map); }
+  else{ meMarker.setLatLng([lat,lon]); meAccuracy.setLatLng([lat,lon]).setRadius(acc||0); }
+  pLat.textContent=lat.toFixed(5); pLon.textContent=lon.toFixed(5);
+  pAcc.textContent=acc?acc.toFixed(0)+' m':'—'; pBrg.textContent=Number.isFinite(brg)?Math.round(brg)+'°':'—';
 }
 function startTracking(){
   if(trackId) return;
-  trackId = navigator.geolocation.watchPosition(pos=>{
-    lastFix = pos;
-    const {latitude:lat, longitude:lon, accuracy:acc, heading, speed} = pos.coords;
+  trackId=navigator.geolocation.watchPosition(pos=>{
+    lastFix=pos; const {latitude:lat,longitude:lon,accuracy:acc,heading,speed}=pos.coords;
     updateMeMarker(lat,lon,acc,heading);
-    let mps = Number.isFinite(speed) && speed!==null ? speed : null;
+    let mps=Number.isFinite(speed)&&speed!==null?speed:null;
     if(!mps && window.__prevFix){
-      const dt = (pos.timestamp - window.__prevFix.timestamp)/1000;
-      if(dt>0){
-        const d = haversine({lat:window.__prevFix.coords.latitude,lon:window.__prevFix.coords.longitude},{lat,lon});
-        mps = d/dt;
-      }
+      const dt=(pos.timestamp-window.__prevFix.timestamp)/1000;
+      if(dt>0){ const d=haversine({lat:window.__prevFix.coords.latitude,lon:window.__prevFix.coords.longitude},{lat,lon}); mps=d/dt; }
     }
-    window.__prevFix = pos;
-    setNeedle(msToKn(mps||0));
-  }, err=> showErr('GPS error: '+err.message),
-  { enableHighAccuracy:true, maximumAge:0, timeout:15000 });
-  $('btnTrack').textContent = 'Tracking…';
+    window.__prevFix=pos; setNeedle(msToKn(mps||0));
+  }, err=>showErr('GPS error: '+err.message), {enableHighAccuracy:true,maximumAge:0,timeout:15000});
+  btnTrack.textContent='Tracking…';
 }
-function stopTracking(){ if(trackId){ navigator.geolocation.clearWatch(trackId); trackId=null; $('btnTrack').textContent='Start tracking'; } }
-$('btnTrack').onclick = ()=> trackId ? stopTracking() : startTracking();
+function stopTracking(){ if(trackId){navigator.geolocation.clearWatch(trackId);trackId=null;btnTrack.textContent='Start tracking';} }
+btnTrack.onclick=()=>trackId?stopTracking():startTracking();
 
-/* ---------- LIVE LAYERS: AIRCRAFT & BOATS ---------- */
-let aircraftTimer = null, boatsTimer = null;
+/* ---------- LIVE AIRCRAFT/BOATS ---------- */
+let aircraftTimer=null, boatsTimer=null;
+const planeIcon=L.icon({iconUrl:'https://cdn-icons-png.flaticon.com/512/3448/3448339.png',iconSize:[24,24],iconAnchor:[12,12]});
+const boatIcon =L.icon({iconUrl:'https://cdn-icons-png.flaticon.com/512/77/77521.png',    iconSize:[24,24],iconAnchor:[12,12]});
 
-function planeIcon(){ return L.icon({ iconUrl:'https://cdn-icons-png.flaticon.com/512/3448/3448339.png', iconSize:[20,20], iconAnchor:[10,10] }); }
-function boatIcon(){  return L.icon({ iconUrl:'https://cdn-icons-png.flaticon.com/512/77/77521.png',    iconSize:[20,20], iconAnchor:[10,10] }); }
+function rndAround([lat,lon],km=20){const r=km/111;return[lat+(Math.random()-.5)*r,lon+(Math.random()-.5)*r];}
+function demoPlanes(n=6){const c=map.getCenter(),a=[];for(let i=0;i<n;i++){const [lat,lon]=rndAround([c.lat,c.lng],60);a.push({lat,lon,callsign:`EI-D${String(i).padStart(2,'0')}`,mps:80+Math.random()*100,track:Math.floor(Math.random()*360),alt:9000+Math.random()*6000,icao24:`abc${i}`});}return a;}
+function demoBoats(n=8){const c=map.getCenter(),a=[];for(let i=0;i<n;i++){const [lat,lon]=rndAround([c.lat,c.lng],40);a.push({lat,lon,name:`IE Boat ${i+1}`,sog:5+Math.random()*15,cog:Math.floor(Math.random()*360),mmsi:`257000${100+i}`});}return a;}
 
-// DEMO helpers
-function randomAround([lat,lon], km=20){
-  const r = km/111; return [lat + (Math.random()-0.5)*r, lon + (Math.random()-0.5)*r];
-}
-function demoPlanes(count=6){
-  const c = map.getCenter(); const out=[];
-  for(let i=0;i<count;i++){ const [lat,lon]=randomAround([c.lat,c.lng],60);
-    out.push({lat,lon,callsign:`EI-D${String(i).padStart(2,'0')}`, cog:Math.floor(Math.random()*360), sog:(180+Math.random()*120)/1.943844});
-  } return out;
-}
-function demoBoats(count=8){
-  const c = map.getCenter(); const out=[];
-  for(let i=0;i<count;i++){ const [lat,lon]=randomAround([c.lat,c.lng],40);
-    out.push({lat,lon,name:`IE Boat ${i+1}`, cog:Math.floor(Math.random()*360), sog:(5+Math.random()*15).toFixed(1)});
-  } return out;
-}
-
-// OpenSky proxy
 async function fetchAircraftBBox(){
-  const b = map.getBounds();
-  const url = `${API_BASE}/api/opensky?n=${b.getNorth()}&s=${b.getSouth()}&e=${b.getEast()}&w=${b.getWest()}`;
-  $('dbgOpenSky').textContent = url;
-  const r = await fetch(url, { cache:'no-store' });
-  $('dbgOpenSkyState').innerHTML = r.ok ? '<span class="ok">✓</span>' : `<span class="bad">✗ ${r.status}</span>`;
-  if(!r.ok) throw new Error('opensky '+r.status);
-  return r.json();
+  const b=map.getBounds(); const url=`${API_BASE}/api/opensky?n=${b.getNorth()}&s=${b.getSouth()}&e=${b.getEast()}&w=${b.getWest()}`;
+  dbgOpenSky.textContent=url; const r=await fetch(url,{cache:'no-store'}); dbgOpenSkyState.innerHTML=r.ok?'<span style="color:#22c55e">✓</span>':`<span style="color:#ef4444">✗ ${r.status}</span>`;
+  if(!r.ok) throw new Error('opensky '+r.status); return r.json();
 }
 async function refreshAircraft(){
   try{
-    const data = await fetchAircraftBBox();
+    const data=await fetchAircraftBBox();
     aircraftLayer.clearLayers();
-    const states = data.states || [];
+    const states=data?.states||[]; dbgPlaneCount.textContent=states.length;
+    if(states.length===0 && CONFIG.DEMO){
+      demoPlanes().forEach(p=>{
+        L.marker([p.lat,p.lon],{icon:planeIcon,rotationAngle:p.track??0,rotationOrigin:'center'})
+          .bindPopup(`<b>✈ ${p.callsign}</b><br>Speed: ${(p.mps*1.943844).toFixed(1)} kn<br>Track: ${p.track}°<br>Alt: ${Math.round(p.alt)} m<br>ICAO24: ${p.icao24}`)
+          .addTo(aircraftLayer);
+      });
+      return;
+    }
+    states.forEach(s=>{
+      const icao=s[0]; const callsign=(s[1]||'').trim()||'N/A'; const country=s[2]||'—';
+      const lon=s[5], lat=s[6], baroAlt=s[7], vel=s[9], track=s[10], geoAlt=s[13];
+      if(lat==null||lon==null) return;
+      const kn=vel!=null?(vel*1.943844).toFixed(1):'—'; const alt=geoAlt??baroAlt;
+      L.marker([lat,lon],{icon:planeIcon,rotationAngle:track||0,rotationOrigin:'center'})
+        .bindPopup(`<b>✈ ${callsign}</b><br>Speed: ${kn} kn<br>Track: ${track!=null?Math.round(track):'—'}°<br>Alt: ${alt!=null?Math.round(alt):'—'} m<br>ICAO24: ${icao}<br>${country}`)
+        .addTo(aircraftLayer);
+    });
+  }catch(e){
+    if(CONFIG.DEMO){ aircraftLayer.clearLayers(); demoPlanes().forEach(p=>L.marker([p.lat,p.lon],{icon:planeIcon,rotationAngle:p.track||0}).bindPopup(`<b>✈ ${p.callsign}</b><br>Speed: ${(p.mps*1.943844).toFixed(1)} kn<br>Track: ${p.track}°`).addTo(aircraftLayer)); }
+  }
+}
+function startAircraft(){ refreshAircraft(); if(aircraftTimer)clearInterval(aircraftTimer); aircraftTimer=setInterval(refreshAircraft,10000); }
+function stopAircraft(){ if(aircraftTimer)clearInterval(aircraftTimer); aircraftTimer=null; }
+
+async function refreshBoats(){
+  try{
+    const url=`${API_BASE}/api/ais`; dbgAis.textContent=url;
+    const r=await fetch(url,{cache:'no-store'}); dbgAisState.innerHTML=r.ok?'<span style="color:#22c55e">✓</span>':`<span style="color:#ef4444">✗ ${r.status}</span>`;
+    if(!r.ok) throw new Error('ais '+r.status);
+    const list=await r.json(); boatsLayer.clearLayers(); const arr=Array.isArray(list)?list:[]; dbgBoatCount.textContent=arr.length;
+    if(arr.length===0 && CONFIG.DEMO){
+      demoBoats().forEach(v=>{
+        L.marker([v.lat,v.lon],{icon:boatIcon,rotationAngle:v.cog||0,rotationOrigin:'center'})
+          .bindPopup(`<b>⛵ ${v.name}</b><br>SOG: ${Number(v.sog).toFixed(1)} kn<br>COG: ${v.cog}°<br>MMSI: ${v.mmsi}`)
+          .addTo(boatsLayer);
+      }); return;
+    }
+    arr.forEach(v=>{
+      if(v.lat==null||v.lon==null) return;
+      const name=v.name||`MMSI ${v.mmsi||''}`.trim(); const sog=v.sog!=null?Number(v.sog).toFixed(1):'—'; const cog=v.cog!=null?Math.round(v.cog):'—';
+      L.marker([v.lat,v.lon],{icon:boatIcon,rotationAngle:(v.cog||0),rotationOrigin:'center'})
+        .bindPopup(`<b>⛵ ${name}</b><br>SOG: ${sog} kn<br>COG: ${cog}°${v.mmsi?`<br>MMSI: ${v.mmsi}`:''}`)
+        .addTo(boatsLayer);
+    });
+  }catch(e){
+    if(CONFIG.DEMO){ boatsLayer.clearLayers(); demoBoats().forEach(v=>L.marker([v.lat,v.lon],{icon:boatIcon,rotationAngle:v.cog||0}).bindPopup(`<b>⛵ ${v.name}</b><br>SOG: ${Number(v.sog).toFixed(1)} kn<br>COG: ${v.cog}°`).addTo(boatsLayer)); }
+  }
+}
+function startBoats(){ refreshBoats(); if(boatsTimer)clearInterval(boatsTimer); boatsTimer=setInterval(refreshBoats,15000); }
+function stopBoats(){ if(boatsTimer)clearInterval(boatsTimer); boatsTimer=null; }
+
+/* ---------- OSM POIs: Harbours / Fuel / Piers ---------- */
+function poiIcon(color,emoji){return L.divIcon({className:'',html:`<div style="transform:translate(-50%,-50%);position:relative;left:50%;top:50%;font-size:18px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))">${emoji}</div>`})}
+const harbourIcon=poiIcon('#5eead4','🏁');  // finish flag for harbour
+const fuelIcon   =poiIcon('#fde047','⛽');
+const pierIcon   =poiIcon('#93c5fd','🛶');
+
+async function overpass(query){
+  const url='https://overpass-api.de/api/interpreter?data='+encodeURIComponent(query);
+  const r=await fetch(url,{cache:'no-store'}); if(!r.ok) throw new Error('Overpass '+r.status); return r.json();
+}
+function bboxStr(){ const b=map.getBounds(); return `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`; }
+
+async function refreshPOI(kind){
+  const bbox=bboxStr();
+  let q='';
+  if(kind==='harbours'){
+    q = `[out:json][timeout:25];
+      (node["seamark:type"="harbour"](${bbox});
+       way["seamark:type"="harbour"](${bbox});
+       relation["seamark:type"="harbour"](${bbox});); out center;`;
+  }else if(kind==='fuel'){
+    q = `[out:json][timeout:25];
+      (node["seamark:small_craft_facility"="fuel"](${bbox});
+       node["amenity"="fuel"](${bbox});); out center;`;
+  }else if(kind==='piers'){
+    q = `[out:json][timeout:25];
+      (way["man_made"="pier"](${bbox}); relation["man_made"="pier"](${bbox});); out center;`;
+  }else return;
+
+  const layer = ({harbours,fuel,piers})[kind];
+  layer.clearLayers();
+  try{
+    const j=await overpass(q);
+    (j.elements||[]).forEach(e=>{
+      const lat=e.lat ?? e.center?.lat, lon=e.lon ?? e.center?.lon; if(lat==null||lon==null) return;
+      const name=e.tags?.name || (e.tags?.['seamark:name']) || kind;
+      const icon = kind==='harbours'?harbourIcon : kind==='fuel'?fuelIcon : pierIcon;
+      L.marker([lat,lon],{icon}).bindPopup(`<b>${name}</b><br><small>${kind}</small>`).addTo(layer);
+    });
+  }catch(err){ console.warn('POI',kind,err); }
+}
+// Requery POIs on zoom end if a POI layer shown
+map?.on?.('moveend', ()=>{
+  [['harbours',harbours],['fuel',fuel],['piers',piers]].forEach(([k,ly])=>{
+    if(map.hasLayer(ly)) refreshPOI(k);
+  });
+});
+
+/* ---------- BOOT ---------- */
+async function boot(){
+  try{
+    setStatus('Booting…');
+    initMap();
+    const key=await getTioKey();
+    setStatus(`API base: ${API_BASE||'(same-origin)'} — key ✓`);
+
+    btnGeo.onclick=async()=>{ try{ clearErr(); const pos=await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{enableHighAccuracy:true,timeout:12000})); const {latitude,longitude}=pos.coords; const d=await tmrForecastByLatLon(latitude,longitude,key); setWX(d); map.setView([latitude,longitude],11);}catch(e){showErr(e.message);} };
+    btnCity.onclick=async()=>{ try{ clearErr(); const name=(city.value||'').trim(); if(!name) return showErr('Type a city.'); const loc=await tmrGeocodeCity(name,key); const d=await tmrForecastByLatLon(loc.lat,loc.lon,key); setWX(d); map.setView([loc.lat,loc.lon],9);}catch(e){showErr(e.message);} };
+  }catch(e){ showErr(`Startup failed: ${e.message}`); setStatus('Failed to boot.'); }
+}
+document.addEventListener('DOMContentLoaded', boot);
+</script>
+</body>
+</html>
