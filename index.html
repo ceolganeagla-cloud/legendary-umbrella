@@ -35,10 +35,7 @@
   .muted{color:var(--muted)}
   .chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin-right:6px;background:#0e1724}
   #map{height:62vh;min-height:420px;border-radius:12px}
-  @media(max-width:640px){
-    #map{height:70vh;min-height:440px}
-    button{padding:12px 14px}
-  }
+  @media(max-width:640px){ #map{height:70vh;min-height:440px} button{padding:12px 14px} }
   input{background:#0e1320;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px;min-width:220px}
   .metric{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:14px}
   .metric b{color:var(--ink)}
@@ -97,7 +94,8 @@
         <span class="chip">Esri World Ocean</span>
         <span class="chip">Esri World Imagery (Satellite)</span>
         <span class="chip">OpenTopoMap</span>
-        & overlay <span class="chip">OpenSeaMap Seamarks</span>.
+        & overlays <span class="chip">OpenSeaMap Seamarks</span>,
+        <span class="chip">Depth Contours</span>, <span class="chip">Rivers/Waterways</span>.
       </div>
 
       <details class="debug">
@@ -169,20 +167,32 @@
 </main>
 
 <script>
-/*** HOSTING / API BASE ***/
+/* ---------- HOSTING / API BASE ---------- */
 const ON_VERCEL = location.hostname.endsWith('.vercel.app');
 const ON_LOCAL = ['localhost','127.0.0.1'].includes(location.hostname);
 const VERCEL_ORIGIN = 'https://legendary-umbrella-ashen.vercel.app';
 const API_BASE = (ON_VERCEL || ON_LOCAL) ? '' : VERCEL_ORIGIN;
-const $ = (id)=>document.getElementById(id);
+const $ = id => document.getElementById(id);
 $('apiBaseTxt').textContent = API_BASE || '(same-origin)';
 $('dbgBase').textContent = API_BASE || '(same-origin)';
 
-const setStatus = (t)=>$('status').textContent=t;
-const showErr = (msg)=>{ const e=$('err'); e.style.display='block'; e.textContent=msg; }
-const clearErr = ()=>{ const e=$('err'); e.style.display='none'; e.textContent=''; }
+const setStatus = t => $('status').textContent=t;
+const showErr = msg => { const e=$('err'); e.style.display='block'; e.textContent=msg; }
+const clearErr = () => { const e=$('err'); e.style.display='none'; e.textContent=''; }
 
-/*** WEATHER HELPERS (raw hidden unless debug open) ***/
+/* ---------- CONFIG ---------- */
+// DEMO true → show simulated planes/boats when feeds are empty/fail.
+// Turn DEMO false once your real feeds are good.
+const CONFIG = { DEMO: true };
+// Thunderforest key (optional, if you want TF Outdoors basemap)
+const TF_KEY = ""; // e.g. "abcd1234..."
+
+let map, meMarker, meAccuracy, trackId=null, lastFix=null;
+let osm, ocean, sat, topo, seamark;
+let aircraftLayer = L.layerGroup();
+let boatsLayer = L.layerGroup();
+
+/* ---------- WEATHER HELPERS ---------- */
 async function getTioKey(){
   const url = `${API_BASE}/api/tio-key`;
   const r = await fetch(url, {cache:'no-store'});
@@ -205,7 +215,7 @@ async function tmrGeocodeCity(name,key){
 }
 function setWX(data){
   const point = data?.timelines?.hourly?.[0];
-  if(!point){ return; }
+  if(!point) return;
   const v = point.values || {};
   $('mTemp').textContent = (v.temperature ?? '—') + ' °C';
   $('mWind').textContent = (v.windSpeed ?? '—') + ' m/s';
@@ -218,14 +228,11 @@ function setWX(data){
   if (dbgOpen) $('raw').textContent = JSON.stringify(data,null,2);
 }
 
-/*** MAP + BASEMAPS ***/
-let map, meMarker, meAccuracy, trackId=null, lastFix=null;
-let osm, ocean, sat, topo, seamark;   // layers
-
+/* ---------- MAP / LAYERS ---------- */
 function initMap(){
   map = L.map('map',{center:[53.35,-6.26],zoom:10,minZoom:2});
 
-  // basemaps
+  // Basemaps
   osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
     maxZoom:19, attribution: '&copy; OpenStreetMap'
   }).addTo(map);
@@ -239,15 +246,29 @@ function initMap(){
   });
 
   topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{
-    maxZoom:17, attribution: 'Map data: &copy; OpenTopoMap contributors'
+    maxZoom:17, attribution: 'Map data &copy; OpenTopoMap'
   });
 
-  // overlay
+  // Optional Thunderforest Outdoors
+  const tfOutdoors = TF_KEY ? L.tileLayer(
+    `https://tile.thunderforest.com/outdoors/{z}/{x}/{y}.png?apikey=${TF_KEY}`, {
+      maxZoom:22, attribution: '&copy; Thunderforest, OpenStreetMap'
+    }
+  ) : null;
+
+  // Overlays
   seamark = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',{
-    maxZoom:18, opacity:0.9, attribution:'Seamarks &copy; OpenSeaMap'
+    maxZoom:18, opacity:0.95, attribution:'Seamarks &copy; OpenSeaMap'
   });
 
-  // basemap buttons keep overlays / live layers
+  const depth = L.tileLayer('https://tiles.openseamap.org/depth/{z}/{x}/{y}.png', {
+    maxZoom:18, opacity:0.6, attribution:'Depth &copy; OpenSeaMap'
+  });
+
+  const waterways = L.tileLayer('https://tile.openstreetmap.fr/hydro/{z}/{x}/{y}.png', {
+    maxZoom:18, opacity:0.7, attribution:'Hydro &copy; OSM France'
+  });
+
   function readdLiveLayers(){
     if(meMarker) meMarker.addTo(map);
     if(meAccuracy) meAccuracy.addTo(map);
@@ -256,11 +277,11 @@ function initMap(){
   }
   function switchBase(newBase){
     map.eachLayer(l=>{
-      // keep overlays (seamark is overlay)
-      if(l!==seamark) map.removeLayer(l);
+      if(l!==seamark && l!==depth && l!==waterways && l!==aircraftLayer && l!==boatsLayer) {
+        map.removeLayer(l);
+      }
     });
     newBase.addTo(map);
-    if(map.hasLayer(seamark)) seamark.addTo(map);
     readdLiveLayers();
   }
 
@@ -269,6 +290,19 @@ function initMap(){
   $('btnSat').onclick   = ()=> switchBase(sat);
   $('btnTopo').onclick  = ()=> switchBase(topo);
   $('btnSeamark').onclick = ()=> seamark.addTo(map);
+
+  // Leaflet layer control
+  const baseMaps = {"OSM":osm,"Esri Ocean":ocean,"Esri World Imagery (Satellite)":sat,"OpenTopoMap":topo};
+  if (tfOutdoors) baseMaps["Thunderforest Outdoors"] = tfOutdoors;
+
+  const overlays = {
+    "OpenSeaMap Seamarks": seamark,
+    "Depth Contours": depth,
+    "Rivers / Waterways": waterways,
+    "Aircraft": aircraftLayer,
+    "Boats": boatsLayer
+  };
+  L.control.layers(baseMaps, overlays, {collapsed:true}).addTo(map);
 
   $('btnFull').onclick = ()=>{
     const el = $('map');
@@ -280,7 +314,7 @@ function initMap(){
   setTimeout(()=> map.invalidateSize(), 0);
 }
 
-/*** GEO / SPEEDO ***/
+/* ---------- GEO / SPEEDO ---------- */
 const R = 6371000;
 const toRad = d=> d*Math.PI/180;
 const haversine = (a,b)=>{
@@ -328,18 +362,31 @@ function startTracking(){
   { enableHighAccuracy:true, maximumAge:0, timeout:15000 });
   $('btnTrack').textContent = 'Tracking…';
 }
-function stopTracking(){
-  if(trackId){ navigator.geolocation.clearWatch(trackId); trackId=null; $('btnTrack').textContent='Start tracking'; }
-}
+function stopTracking(){ if(trackId){ navigator.geolocation.clearWatch(trackId); trackId=null; $('btnTrack').textContent='Start tracking'; } }
 $('btnTrack').onclick = ()=> trackId ? stopTracking() : startTracking();
 
-/*** LIVE LAYERS: AIRCRAFT & BOATS ***/
-let aircraftLayer = L.layerGroup();
-let boatsLayer = L.layerGroup();
+/* ---------- LIVE LAYERS: AIRCRAFT & BOATS ---------- */
 let aircraftTimer = null, boatsTimer = null;
 
 function planeIcon(){ return L.icon({ iconUrl:'https://cdn-icons-png.flaticon.com/512/3448/3448339.png', iconSize:[20,20], iconAnchor:[10,10] }); }
 function boatIcon(){  return L.icon({ iconUrl:'https://cdn-icons-png.flaticon.com/512/77/77521.png',    iconSize:[20,20], iconAnchor:[10,10] }); }
+
+// DEMO helpers
+function randomAround([lat,lon], km=20){
+  const r = km/111; return [lat + (Math.random()-0.5)*r, lon + (Math.random()-0.5)*r];
+}
+function demoPlanes(count=6){
+  const c = map.getCenter(); const out=[];
+  for(let i=0;i<count;i++){ const [lat,lon]=randomAround([c.lat,c.lng],60);
+    out.push({lat,lon,callsign:`EI-D${String(i).padStart(2,'0')}`, cog:Math.floor(Math.random()*360), sog:(180+Math.random()*120)/1.943844});
+  } return out;
+}
+function demoBoats(count=8){
+  const c = map.getCenter(); const out=[];
+  for(let i=0;i<count;i++){ const [lat,lon]=randomAround([c.lat,c.lng],40);
+    out.push({lat,lon,name:`IE Boat ${i+1}`, cog:Math.floor(Math.random()*360), sog:(5+Math.random()*15).toFixed(1)});
+  } return out;
+}
 
 // OpenSky proxy
 async function fetchAircraftBBox(){
@@ -357,6 +404,15 @@ async function refreshAircraft(){
     aircraftLayer.clearLayers();
     const states = data.states || [];
     $('dbgPlaneCount').textContent = states.length;
+
+    if (states.length === 0 && CONFIG.DEMO) {
+      demoPlanes().forEach(p=>{
+        L.marker([p.lat,p.lon], { icon: planeIcon() })
+          .bindTooltip(`${p.callsign}\n${Number(p.sog).toFixed(1)} kn @ ${p.cog}°`)
+          .addTo(aircraftLayer);
+      });
+      return;
+    }
     for(const s of states){
       const callsign = (s[1]||'').trim();
       const lat = s[6], lon = s[5];
@@ -367,7 +423,17 @@ async function refreshAircraft(){
         .bindTooltip(`${callsign || 'N/A'}\n${(gs? (gs*1.943844).toFixed(1)+' kn' : '—')} @ ${track==null?'—':Math.round(track)+'°'}`)
         .addTo(aircraftLayer);
     }
-  }catch(e){ console.warn(e); }
+  }catch(e){
+    console.warn(e);
+    if (CONFIG.DEMO) {
+      aircraftLayer.clearLayers();
+      demoPlanes().forEach(p=>{
+        L.marker([p.lat,p.lon], { icon: planeIcon() })
+          .bindTooltip(`${p.callsign}\n${Number(p.sog).toFixed(1)} kn @ ${p.cog}°`)
+          .addTo(aircraftLayer);
+      });
+    }
+  }
 }
 function toggleAircraft(){
   if(map.hasLayer(aircraftLayer)){
@@ -394,13 +460,32 @@ async function refreshBoats(){
     const list = await r.json();
     boatsLayer.clearLayers();
     $('dbgBoatCount').textContent = Array.isArray(list) ? list.length : 0;
+
+    if ((!list || list.length===0) && CONFIG.DEMO) {
+      demoBoats().forEach(v=>{
+        L.marker([v.lat,v.lon], { icon: boatIcon() })
+          .bindTooltip(`${v.name}\n${v.sog} kn @ ${v.cog}°`)
+          .addTo(boatsLayer);
+      });
+      return;
+    }
     (list||[]).forEach(v=>{
       if(v.lat==null || v.lon==null) return;
       L.marker([v.lat, v.lon], { icon: boatIcon() })
         .bindTooltip(`${v.name||v.mmsi||'Vessel'}\n${v.sog!=null? v.sog+' kn':'—'} @ ${v.cog!=null? Math.round(v.cog)+'°':'—'}`)
         .addTo(boatsLayer);
     });
-  }catch(e){ console.warn(e); }
+  }catch(e){
+    console.warn(e);
+    if (CONFIG.DEMO) {
+      boatsLayer.clearLayers();
+      demoBoats().forEach(v=>{
+        L.marker([v.lat,v.lon], { icon: boatIcon() })
+          .bindTooltip(`${v.name}\n${v.sog} kn @ ${v.cog}°`)
+          .addTo(boatsLayer);
+      });
+    }
+  }
 }
 function toggleBoats(){
   if(map.hasLayer(boatsLayer)){
@@ -416,7 +501,7 @@ function toggleBoats(){
 }
 $('btnBoats').onclick = toggleBoats;
 
-/*** BOOT ***/
+/* ---------- BOOT ---------- */
 async function boot(){
   try{
     clearErr();
@@ -447,7 +532,6 @@ async function boot(){
       }catch(e){ showErr(e.message); }
     };
 
-    // Keep raw hidden unless the Debug drawer is open
     document.querySelector('details.debug').addEventListener('toggle', e=>{
       $('raw').style.display = e.target.open ? 'block' : 'none';
     });
