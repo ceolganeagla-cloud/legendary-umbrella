@@ -7,7 +7,7 @@
 <link rel="icon" href="favicon.ico">
 <meta name="theme-color" content="#0a0f15">
 
-<!-- Leaflet (sync load; no defer so L exists before our code runs) -->
+<!-- Leaflet (sync load) -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -37,6 +37,7 @@
   .muted{color:var(--muted)}
   .btn.active{ outline:2px solid var(--accent); }
   .chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin-right:6px;background:#0e1724}
+  .veh{ filter: drop-shadow(0 0 2px rgba(0,0,0,.6)); }
 
   /* Speedometer */
   .speedo{display:grid;place-items:center;padding:16px}
@@ -46,7 +47,6 @@
   .ticks{position:absolute;left:0;top:0;width:100%;height:100%}
   .speed-read{margin-top:8px;font-size:28px;font-weight:700;text-align:center}
   .units{font-size:12px;color:var(--muted);text-align:center;margin-top:-6px}
-  .veh{ filter: drop-shadow(0 0 2px rgba(0,0,0,.6)); }
 </style>
 </head>
 <body>
@@ -67,17 +67,22 @@
         <span class="muted">Layers: </span>
         <button id="btnOSM" class="btn">OSM</button>
         <button id="btnOcean" class="btn">Ocean</button>
+        <button id="btnSat" class="btn">Satellite</button>
         <button id="btnSeamark" class="btn">Seamarks</button>
+        <button id="btnDepth" class="btn">Depth</button>
+        <button id="btnRivers" class="btn">Rivers</button>
+        <button id="btnHarbours" class="btn">Harbours</button>
+        <button id="btnFuel" class="btn">Fuel</button>
+        <button id="btnPiers" class="btn">Piers</button>
         <button id="btnAircraft" class="btn">Aircraft</button>
         <button id="btnBoats" class="btn">Boats</button>
-        <button onclick="loadPlanes()">Aircraft</button>
-<button onclick="loadShips()">Boats</button>
-
       </div>
       <div id="map"></div>
       <div class="muted" style="margin-top:6px">
-        Basemaps: <span class="chip">OpenStreetMap</span> <span class="chip">Esri World Ocean</span> & overlay
-        <span class="chip">OpenSeaMap Seamarks</span>. Ocean basemap shows bathymetry shading; seamarks add buoys, beacons, channels.
+        Basemaps: <span class="chip">OpenStreetMap</span> <span class="chip">Esri World Ocean</span>
+        <span class="chip">Esri Imagery (Satellite)</span> & overlays
+        <span class="chip">OpenSeaMap Seamarks</span> <span class="chip">Depth</span> <span class="chip">Rivers</span>
+        <span class="chip">Harbours</span> <span class="chip">Fuel</span> <span class="chip">Piers</span>.
       </div>
     </div>
 
@@ -96,7 +101,7 @@
         <div class="muted">Precip Prob:</div><b id="mPop">—</b>
         <div class="muted">Cloud Cover:</div><b id="mCloud">—</b>
       </div>
-      <pre id="raw"></pre>
+      <pre id="raw" style="display:none"></pre>
       <div id="err" class="card error" style="display:none;margin-top:8px"></div>
     </div>
   </section>
@@ -139,9 +144,22 @@
 </main>
 
 <script>
+/* ===== Mini rotated-marker helper (inline) ===== */
+(function(){
+  const proto=L.Marker.prototype, _setPos=proto._setPos;
+  proto._setPos=function(pos){
+    _setPos.call(this,pos);
+    if(!this.options.rotationAngle) return;
+    this._icon.style.transformOrigin=this.options.rotationOrigin||"center";
+    const a=this.options.rotationAngle;
+    const t=(this._icon.style.transform||'').replace(/ ?rotate\\(.*\\)/,'');
+    this._icon.style.transform=t+' rotate('+a+'deg)';
+  };
+  proto.setRotationAngle=function(a){this.options.rotationAngle=a; this.update();};
+})();
+
 /*** ====== HOSTING / API BASE ====== ***/
 const ON_VERCEL = location.hostname.endsWith('.vercel.app');
-const ON_GHPAGES = location.hostname.endsWith('github.io');
 const ON_LOCAL = ['localhost','127.0.0.1'].includes(location.hostname);
 const VERCEL_ORIGIN = 'https://legendary-umbrella-ashen.vercel.app';
 const API_BASE = (ON_VERCEL || ON_LOCAL) ? '' : VERCEL_ORIGIN;
@@ -178,7 +196,7 @@ async function tmrGeocodeCity(name,key){
 }
 function setWX(data){
   const point = data?.timelines?.hourly?.[0];
-  if(!point){ $('raw').textContent = JSON.stringify(data,null,2); return; }
+  if(!point){ $('raw').style.display='block'; $('raw').textContent = JSON.stringify(data,null,2); return; }
   const v = point.values || {};
   $('mTemp').textContent = (v.temperature ?? '—') + ' °C';
   $('mWind').textContent = (v.windSpeed ?? '—') + ' m/s';
@@ -186,40 +204,49 @@ function setWX(data){
   $('mDir').textContent = (v.windDirection ?? '—') + '°';
   $('mPop').textContent = (v.precipitationProbability ?? '—') + ' %';
   $('mCloud').textContent = (v.cloudCover ?? '—') + ' %';
-  $('raw').textContent = JSON.stringify(data,null,2);
 }
 
-/*** ====== MAP ====== ***/
+/*** ====== MAP & LAYERS ====== ***/
 let map, meMarker, meAccuracy, trackId=null, lastFix=null;
-let osm, ocean, seamark;
+let osm, ocean, sat, seamark, depthTiles, riversLayer, harboursLayer, fuelLayer, piersLayer;
+riversLayer = L.layerGroup(); harboursLayer=L.layerGroup(); fuelLayer=L.layerGroup(); piersLayer=L.layerGroup();
 
 function initMap(){
   map = L.map('map',{center:[53.35,-6.26],zoom:10,minZoom:2});
   // basemaps
-  osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    maxZoom:19, attribution: '&copy; OpenStreetMap'
-  }).addTo(map);
-  ocean = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}',{
-    maxZoom:13, attribution: 'Esri Ocean'
-  });
-  // overlay
-  seamark = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',{
-    maxZoom:18, opacity:0.9, attribution:'OpenSeaMap'
-  });
+  osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{ maxZoom:19, attribution:'&copy; OpenStreetMap'}).addTo(map);
+  ocean = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}',{ maxZoom:13, attribution:'Esri Ocean'});
+  sat = L.tileLayer('https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{ maxZoom:19, attribution:'Esri Imagery'});
 
-  // buttons
-  $('btnOSM').onclick   = ()=>{ map.eachLayer(l=>map.removeLayer(l)); osm.addTo(map); if(meMarker) meMarker.addTo(map); if(meAccuracy) meAccuracy.addTo(map); if(map.hasLayer(aircraftLayer)) aircraftLayer.addTo(map); if(map.hasLayer(boatsLayer)) boatsLayer.addTo(map); };
-  $('btnOcean').onclick = ()=>{ map.eachLayer(l=>map.removeLayer(l)); ocean.addTo(map); if(meMarker) meMarker.addTo(map); if(meAccuracy) meAccuracy.addTo(map); if(map.hasLayer(aircraftLayer)) aircraftLayer.addTo(map); if(map.hasLayer(boatsLayer)) boatsLayer.addTo(map); };
-  $('btnSeamark').onclick = ()=>{ seamark.addTo(map); };
+  // overlays
+  seamark = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',{ maxZoom:18, opacity:.95, attribution:'OpenSeaMap' });
+  depthTiles = L.tileLayer('https://tiles.openseamap.org/depth/{z}/{x}/{y}.png',{ maxZoom:18, opacity:.6, attribution:'OpenSeaMap Depth' });
+
+  // basemap buttons
+  $('btnOSM').onclick   = ()=>{ switchBase(osm); };
+  $('btnOcean').onclick = ()=>{ switchBase(ocean); };
+  $('btnSat').onclick   = ()=>{ switchBase(sat); };
+  $('btnSeamark').onclick = ()=>{ toggleOverlay(seamark, $('btnSeamark')); };
+  $('btnDepth').onclick   = ()=>{ toggleOverlay(depthTiles, $('btnDepth')); };
+  $('btnRivers').onclick  = ()=>{ toggleDataLayer('rivers', $('btnRivers')); };
+  $('btnHarbours').onclick= ()=>{ toggleDataLayer('harbours', $('btnHarbours')); };
+  $('btnFuel').onclick    = ()=>{ toggleDataLayer('fuel', $('btnFuel')); };
+  $('btnPiers').onclick   = ()=>{ toggleDataLayer('piers', $('btnPiers')); };
+
   $('btnFull').onclick = ()=>{
-    const el = $('map');
-    if(!document.fullscreenElement){ el.requestFullscreen?.(); }
-    else{ document.exitFullscreen?.(); }
+    const el = $('map'); if(!document.fullscreenElement){ el.requestFullscreen?.(); } else { document.exitFullscreen?.(); }
   };
-  $('btnCenter').onclick = ()=>{ if(lastFix){ map.setView([lastFix.coords.latitude,lastFix.coords.longitude], Math.max(map.getZoom(), 14)); } };
+  $('btnCenter').onclick = ()=>{ if(lastFix){ map.setView([lastFix.coords.latitude,lastFix.coords.longitude], Math.max(map.getZoom(),14)); } };
 
-  // size fix after first paint
   setTimeout(()=> map.invalidateSize(), 0);
+}
+function switchBase(layer){
+  [osm,ocean,sat].forEach(l=> map.removeLayer(l));
+  layer.addTo(map);
+}
+function toggleOverlay(layer,btn){
+  if(map.hasLayer(layer)){ map.removeLayer(layer); btn.classList.remove('active'); }
+  else { layer.addTo(map); btn.classList.add('active'); }
 }
 
 /*** ====== GEO / SPEEDO ====== ***/
@@ -280,14 +307,18 @@ $('btnTrack').onclick = ()=> trackId ? stopTracking() : startTracking();
 let aircraftLayer = L.layerGroup();
 let boatsLayer = L.layerGroup();
 let aircraftTimer = null, boatsTimer = null;
-function makeIcon(color='#aee'){
-  return L.divIcon({
-    className: 'veh',
-    html: `<div style="width:12px;height:12px;border-radius:50%;
-      background:${color};border:2px solid #0a0f15;box-shadow:0 0 6px rgba(255,255,255,.6)"></div>`,
-    iconSize: [12,12], iconAnchor: [6,6]
-  });
-}
+
+// Icons (plane + boat) rotated by heading/COG
+const planeIcon = L.icon({
+  iconUrl: "https://cdn-icons-png.flaticon.com/512/3448/3448339.png",
+  iconSize: [24, 24],
+  iconAnchor: [12, 12]
+});
+const boatIcon = L.icon({
+  iconUrl: "https://cdn-icons-png.flaticon.com/512/77/77521.png",
+  iconSize: [24, 24],
+  iconAnchor: [12, 12]
+});
 
 // AIRCRAFT via OpenSky (proxied by Vercel api/opensky.js)
 async function fetchAircraftBBox(){
@@ -305,13 +336,19 @@ async function refreshAircraft(){
     const states = data.states || [];
     for(const s of states){
       const callsign = (s[1]||'').trim();
-      const lat = s[6], lon = s[5];
-      const track = s[10]; // degrees
-      const gs = s[9];     // m/s ground speed
+      const lon = s[5], lat = s[6];
+      const gs = s[9];     // m/s
+      const track = s[10]; // deg
+      const alt = s[13];   // meters (geo/baro)
       if(lat==null || lon==null) continue;
-      const m = L.marker([lat,lon], { icon: makeIcon('#7dd3fc') })
-        .bindTooltip(`${callsign || 'N/A'}\n${(gs? (gs*1.943844).toFixed(1)+' kn' : '—')} @ ${track==null?'—':Math.round(track)+'°'}`);
-      m.addTo(aircraftLayer);
+
+      L.marker([lat,lon], { icon: planeIcon, rotationAngle: track||0, rotationOrigin: 'center' })
+        .bindPopup(`<b>✈ ${callsign || 'Unknown'}</b><br>
+          Speed: ${gs ? (gs*1.943844).toFixed(1)+' kn' : '—'}<br>
+          Track: ${track==null ? '—' : Math.round(track)+'°'}<br>
+          Alt: ${alt==null ? '—' : Math.round(alt*3.28084)+' ft'}<br>
+          ICAO24: ${s[0]||'—'}`)
+        .addTo(aircraftLayer);
     }
   }catch(e){ console.warn(e); }
 }
@@ -338,9 +375,12 @@ async function refreshBoats(){
     boatsLayer.clearLayers();
     (list||[]).forEach(v=>{
       if(v.lat==null || v.lon==null) return;
-      const m = L.marker([v.lat, v.lon], { icon: makeIcon('#86efac') })
-        .bindTooltip(`${v.name||v.mmsi||'Vessel'}\n${v.sog!=null? v.sog+' kn':'—'} @ ${v.cog!=null? Math.round(v.cog)+'°':'—'}`);
-      m.addTo(boatsLayer);
+      L.marker([v.lat, v.lon], { icon: boatIcon, rotationAngle: v.cog||0, rotationOrigin:'center' })
+        .bindPopup(`<b>⛵ ${v.name||v.mmsi||'Vessel'}</b><br>
+          SOG: ${v.sog!=null? Number(v.sog).toFixed(1)+' kn':'—'}<br>
+          COG: ${v.cog!=null? Math.round(v.cog)+'°':'—'}<br>
+          ${v.mmsi? 'MMSI: '+v.mmsi : ''}`)
+        .addTo(boatsLayer);
     });
   }catch(e){ console.warn(e); }
 }
@@ -357,6 +397,76 @@ function toggleBoats(){
   }
 }
 $('btnBoats').onclick = toggleBoats;
+
+/*** ====== OSM DATA: Rivers, Harbours, Fuel, Piers (Overpass) ====== */
+async function overpass(query){
+  const r = await fetch('https://overpass-api.de/api/interpreter', { method:'POST', body: query });
+  if(!r.ok) throw new Error('Overpass '+r.status);
+  return r.json();
+}
+function bboxStr(){ const b=map.getBounds(); return `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`; }
+
+async function loadRivers(){
+  const bbox=bboxStr();
+  const q=`[out:json][timeout:25];
+    (way["waterway"~"river|stream|canal"](${bbox}););
+    out geom;`;
+  const j=await overpass(q);
+  riversLayer.clearLayers();
+  (j.elements||[]).forEach(w=>{
+    if(!w.geometry) return;
+    const latlngs=w.geometry.map(p=>[p.lat,p.lon]);
+    L.polyline(latlngs,{color:'#62b0ff',weight:2,opacity:.85}).addTo(riversLayer);
+  });
+}
+async function loadHarbours(){
+  const bbox=bboxStr();
+  const q=`[out:json][timeout:25];
+    (node["seamark:type"="harbour"](${bbox}); node["leisure"="marina"](${bbox}););
+    out center;`;
+  const j=await overpass(q);
+  harboursLayer.clearLayers();
+  (j.elements||[]).forEach(e=>{
+    const lat=e.lat??e.center?.lat, lon=e.lon??e.center?.lon; if(lat==null||lon==null) return;
+    L.marker([lat,lon]).bindPopup(`<b>⚓ ${e.tags?.name||'Harbour/Marina'}</b>`).addTo(harboursLayer);
+  });
+}
+async function loadFuel(){
+  const bbox=bboxStr();
+  const q=`[out:json][timeout:25];
+    (node["amenity"="fuel"](${bbox}););
+    out center;`;
+  const j=await overpass(q);
+  fuelLayer.clearLayers();
+  (j.elements||[]).forEach(e=>{
+    const lat=e.lat??e.center?.lat, lon=e.lon??e.center?.lon; if(lat==null||lon==null) return;
+    L.marker([lat,lon]).bindPopup(`<b>⛽ ${e.tags?.name||'Fuel'}</b>`).addTo(fuelLayer);
+  });
+}
+async function loadPiers(){
+  const bbox=bboxStr();
+  const q=`[out:json][timeout:25];
+    (way["man_made"="pier"](${bbox}); relation["man_made"="pier"](${bbox}););
+    out center;`;
+  const j=await overpass(q);
+  piersLayer.clearLayers();
+  (j.elements||[]).forEach(e=>{
+    const lat=e.lat??e.center?.lat, lon=e.lon??e.center?.lon; if(lat==null||lon==null) return;
+    L.marker([lat,lon]).bindPopup(`<b>🛶 ${e.tags?.name||'Pier'}</b>`).addTo(piersLayer);
+  });
+}
+
+function toggleDataLayer(kind, btn){
+  const mapHas=(l)=>map.hasLayer(l);
+  const toggle=(layer, loader)=>{
+    if(mapHas(layer)){ map.removeLayer(layer); btn.classList.remove('active'); }
+    else{ layer.addTo(map); loader().catch(console.warn); btn.classList.add('active'); }
+  };
+  if(kind==='rivers')   return toggle(riversLayer,  loadRivers);
+  if(kind==='harbours') return toggle(harboursLayer,loadHarbours);
+  if(kind==='fuel')     return toggle(fuelLayer,    loadFuel);
+  if(kind==='piers')    return toggle(piersLayer,   loadPiers);
+}
 
 /*** ====== WEATHER CONTROLS / BOOT ====== ***/
 async function boot(){
@@ -391,50 +501,6 @@ async function boot(){
   }catch(e){
     showErr(`Startup failed: ${e.message}`);
     setStatus('Failed to boot.');
-  }
-}
-async function loadShips() {
-  const res = await fetch(`/api/ais`);
-  const boats = await res.json();
-
-  if (!window.shipLayer) {
-    window.shipLayer = L.layerGroup().addTo(map);
-  } else {
-    window.shipLayer.clearLayers();
-  }
-
-  boats.forEach(b => {
-    L.marker([b.lat, b.lon], {icon: L.icon({
-      iconUrl: "https://cdn-icons-png.flaticon.com/512/77/77521.png",
-      iconSize: [20, 20]
-    })})
-    .bindPopup(`⛵ ${b.name || "Vessel"}<br>SOG: ${b.sog || "?"} kn<br>COG: ${b.cog || "?"}°`)
-    .addTo(window.shipLayer);
-  });
-}
-async function loadPlanes() {
-  const bounds = map.getBounds();
-  const res = await fetch(`/api/opensky?n=${bounds.getNorth()}&s=${bounds.getSouth()}&e=${bounds.getEast()}&w=${bounds.getWest()}`);
-  const data = await res.json();
-
-  if (!window.planeLayer) {
-    window.planeLayer = L.layerGroup().addTo(map);
-  } else {
-    window.planeLayer.clearLayers();
-  }
-
-  if (data.states) {
-    data.states.forEach(f => {
-      const lat = f[6], lon = f[5], callsign = f[1];
-      if (lat && lon) {
-        L.marker([lat, lon], {icon: L.icon({
-          iconUrl: "https://cdn-icons-png.flaticon.com/512/3448/3448339.png",
-          iconSize: [20, 20]
-        })})
-        .bindPopup(`✈️ ${callsign || "Plane"}`)
-        .addTo(window.planeLayer);
-      }
-    });
   }
 }
 
