@@ -12,6 +12,26 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <style>
+  /* Improve button active state with clear highlight */
+.btn.active {
+  background-color: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+/* Tooltip improvement */
+.leaflet-tooltip.my-tooltip {
+  background: var(--card);
+  color: var(--ink);
+  font-weight: 600;
+  padding: 5px 8px;
+  border-radius: 4px;
+  box-shadow: 0 0 10px rgba(0,0,0,0.3);
+}
+
   :root{
     --bg:#0a0f15; --panel:#0f1620; --card:#111a27; --line:#1b2a3b;
     --ink:#e9f0f8; --muted:#9fb2c8; --accent:#22c55e; --warn:#ef4444;
@@ -169,6 +189,36 @@ const $ = (id)=>document.getElementById(id);
 const setStatus = (t)=>{$('status').textContent=t;}
 const showErr = (msg)=>{ const e=$('err'); e.style.display='block'; e.textContent=msg; }
 const clearErr = ()=>{ const e=$('err'); e.style.display='none'; e.textContent=''; }
+// Utility debounce helper to prevent rapid firing (e.g., weather fetch)
+const debounce = (fn, delay) => {
+  let timeout;
+  return (...args) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => fn(...args), delay);
+  };
+};
+
+// Enhanced toggle with loading disable state
+async function toggleLayer(layerFunc, buttonId) {
+  const btn = document.getElementById(buttonId);
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  try {
+    await layerFunc(); // your existing toggleAircraft / toggleBoats
+    btn.classList.toggle('active');
+  } catch(e) {
+    showErr(`Error loading ${buttonId}: ${e.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Accessibility: add aria-labels to all buttons
+document.querySelectorAll('button').forEach(btn => {
+  if (!btn.hasAttribute('aria-label') && btn.textContent.trim()) {
+    btn.setAttribute('aria-label', btn.textContent.trim());
+  }
+});
 
 /*** ====== WEATHER HELPERS ====== ***/
 async function getTioKey(){
@@ -342,13 +392,17 @@ async function refreshAircraft(){
       const alt = s[13];   // meters (geo/baro)
       if(lat==null || lon==null) continue;
 
-      L.marker([lat,lon], { icon: planeIcon, rotationAngle: track||0, rotationOrigin: 'center' })
-        .bindPopup(`<b>✈ ${callsign || 'Unknown'}</b><br>
-          Speed: ${gs ? (gs*1.943844).toFixed(1)+' kn' : '—'}<br>
-          Track: ${track==null ? '—' : Math.round(track)+'°'}<br>
-          Alt: ${alt==null ? '—' : Math.round(alt*3.28084)+' ft'}<br>
-          ICAO24: ${s[0]||'—'}`)
-        .addTo(aircraftLayer);
+const marker = L.marker([lat, lon], { icon: planeIcon, rotationAngle: track || 0, rotationOrigin: 'center' })
+  .bindTooltip(callsign || 'Aircraft', { className:'my-tooltip', direction:'top', offset:[0,-8], sticky:true })
+  .bindPopup(
+    `<b>✈ ${callsign || 'Unknown'}</b><br>
+     Speed: ${gs ? (gs*1.943844).toFixed(1)+' kn' : '—'}<br>
+     Track: ${track==null ? '—' : Math.round(track)+'°'}<br>
+     Alt: ${alt==null ? '—' : Math.round(alt*3.28084)+' ft'}<br>
+     ICAO24: ${s[0]||'—'}`
+  );
+marker.addTo(aircraftLayer);
+
     }
   }catch(e){ console.warn(e); }
 }
@@ -364,23 +418,22 @@ function toggleAircraft(){
     $('btnAircraft').classList.add('active');
   }
 }
-$('btnAircraft').onclick = toggleAircraft;
+document.getElementById('btnAircraft').onclick = () => toggleLayer(toggleAircraft, 'btnAircraft');
 
 // BOATS via your AIS proxy (requires AIS_PROXY_URL env var on Vercel)
 async function refreshBoats(){
   try{
-    const r = await fetch(`${API_BASE}/api/ais`, { cache: 'no-store' });
-    if(!r.ok) throw new Error('ais '+r.status);
-    const list = await r.json(); // expect array [{lat,lon,cog,sog,name,mmsi}, ...]
-    boatsLayer.clearLayers();
-    (list||[]).forEach(v=>{
-      if(v.lat==null || v.lon==null) return;
-      L.marker([v.lat, v.lon], { icon: boatIcon, rotationAngle: v.cog||0, rotationOrigin:'center' })
-        .bindPopup(`<b>⛵ ${v.name||v.mmsi||'Vessel'}</b><br>
-          SOG: ${v.sog!=null? Number(v.sog).toFixed(1)+' kn':'—'}<br>
-          COG: ${v.cog!=null? Math.round(v.cog)+'°':'—'}<br>
-          ${v.mmsi? 'MMSI: '+v.mmsi : ''}`)
-        .addTo(boatsLayer);
+const title = v.name || v.mmsi || 'Vessel';
+const marker = L.marker([v.lat, v.lon], { icon: boatIcon, rotationAngle: v.cog || 0, rotationOrigin:'center' })
+  .bindTooltip(title, { className:'my-tooltip', direction:'top', offset:[0,-8], sticky:true })
+  .bindPopup(
+    `<b>⛵ ${title}</b><br>
+     SOG: ${v.sog!=null? Number(v.sog).toFixed(1)+' kn':'—'}<br>
+     COG: ${v.cog!=null? Math.round(v.cog)+'°':'—'}<br>
+     ${v.mmsi? 'MMSI: '+v.mmsi : ''}`
+  );
+marker.addTo(boatsLayer);
+
     });
   }catch(e){ console.warn(e); }
 }
@@ -396,7 +449,7 @@ function toggleBoats(){
     $('btnBoats').classList.add('active');
   }
 }
-$('btnBoats').onclick = toggleBoats;
+document.getElementById('btnBoats').onclick    = () => toggleLayer(toggleBoats,    'btnBoats');
 
 /*** ====== OSM DATA: Rivers, Harbours, Fuel, Piers (Overpass) ====== */
 async function overpass(query){
@@ -487,22 +540,26 @@ async function boot(){
         map.setView([latitude,longitude], 11);
       }catch(e){ showErr(e.message); }
     };
-    $('btnCity').onclick = async ()=>{
-      try{
-        clearErr();
-        const name = ($('city').value||'').trim();
-        if(!name) return showErr('Type a city.');
-        const loc = await tmrGeocodeCity(name,key);
-        const data = await tmrForecastByLatLon(loc.lat,loc.lon,key);
-        setWX(data);
-        map.setView([loc.lat,loc.lon], 9);
-      }catch(e){ showErr(e.message); }
-    };
-  }catch(e){
-    showErr(`Startup failed: ${e.message}`);
-    setStatus('Failed to boot.');
+$('btnCity').onclick = debounce(async () => {
+  try {
+    clearErr();
+    const name = ($('city').value || '').trim();
+    if (!name) return showErr('Please enter a city name.');
+    setStatus('Fetching city location and weather...');
+    // re-use the key we already fetched in boot() if you stored it;
+    // if not stored, safely re-call getTioKey():
+    const key = await getTioKey();
+    const loc = await tmrGeocodeCity(name, key);
+    const data = await tmrForecastByLatLon(loc.lat, loc.lon, key);
+    setWX(data);
+    map.setView([loc.lat, loc.lon], 11);
+    setStatus(`Showing weather for ${loc.resolved || name}`);
+  } catch (e) {
+    showErr(e.message);
+    setStatus('Failed to fetch weather.');
   }
-}
+}, 500);
+
 
 // Ensure Leaflet + DOM are ready
 document.addEventListener('DOMContentLoaded', () => {
