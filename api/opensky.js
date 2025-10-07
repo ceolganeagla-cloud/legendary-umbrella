@@ -1,24 +1,53 @@
 // /api/opensky.js
-// Proxies OpenSky bbox planes. Use OPEN_SKY_USER / OPEN_SKY_PASS (recommended)
-export default async function handler(req, res) {
-  try {
-    const { n, s, e, w } = req.query;
-    if ([n, s, e, w].some(v => v === undefined))
-      return res.status(400).json({ error: 'Missing bbox n,s,e,w' });
+export const config = { runtime: 'edge' };
 
+const CORS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, OPTIONS',
+  'access-control-allow-headers': 'Content-Type',
+};
+
+export default async function handler(req) {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: CORS });
+  }
+
+  try {
+    const { searchParams } = new URL(req.url);
+    const n = searchParams.get('n');
+    const s = searchParams.get('s');
+    const e = searchParams.get('e');
+    const w = searchParams.get('w');
+
+    if (![n, s, e, w].every(Boolean)) {
+      return json({ error: 'Missing bbox params n,s,e,w' }, 400);
+    }
+
+    const base = 'https://opensky-network.org/api/states/all';
+    const url = `${base}?lamin=${s}&lomin=${w}&lamax=${n}&lomax=${e}`;
+
+    const headers = {};
     const user = process.env.OPEN_SKY_USER || '';
     const pass = process.env.OPEN_SKY_PASS || '';
-    const url  = `https://opensky-network.org/api/states/all?lamin=${s}&lomin=${w}&lamax=${n}&lomax=${e}`;
+    if (user && pass) {
+      headers['Authorization'] = 'Basic ' + btoa(`${user}:${pass}`);
+    }
 
-    const headers = user ? { Authorization: 'Basic ' + Buffer.from(`${user}:${pass}`).toString('base64') } : {};
-    const r = await fetch(url, { headers });
+    const resp = await fetch(url, { headers, cache: 'no-store' });
+    if (!resp.ok) {
+      return json({ error: `OpenSky ${resp.status}` }, resp.status);
+    }
 
-    if (!r.ok) return res.status(r.status).json({ error: `OpenSky ${r.status}` });
-    const j = await r.json();
-
-    res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json(j); // { time, states:[...] }
+    const data = await resp.json();
+    return json(data, 200);
   } catch (e) {
-    return res.status(500).json({ error: String(e) });
+    return json({ error: String(e) }, 500);
+  }
+
+  function json(payload, status = 200) {
+    return new Response(JSON.stringify(payload), {
+      status,
+      headers: { 'content-type': 'application/json; charset=utf-8', ...CORS },
+    });
   }
 }
