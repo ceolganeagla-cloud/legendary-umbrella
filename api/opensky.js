@@ -1,53 +1,14 @@
-// /api/opensky.js
-export const config = { runtime: 'edge' };
-
-const CORS = {
-  'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'GET, OPTIONS',
-  'access-control-allow-headers': 'Content-Type',
-};
-
-export default async function handler(req) {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: CORS });
-  }
-
+export default async function handler(req, res) {
+  const { n, s, e, w } = req.query;
+  const url = `https://opensky-network.org/api/states/all?lamin=${s}&lamax=${n}&lomin=${w}&lomax=${e}`;
   try {
-    const { searchParams } = new URL(req.url);
-    const n = searchParams.get('n');
-    const s = searchParams.get('s');
-    const e = searchParams.get('e');
-    const w = searchParams.get('w');
-
-    if (![n, s, e, w].every(Boolean)) {
-      return json({ error: 'Missing bbox params n,s,e,w' }, 400);
-    }
-
-    const base = 'https://opensky-network.org/api/states/all';
-    const url = `${base}?lamin=${s}&lomin=${w}&lamax=${n}&lomax=${e}`;
-
-    const headers = {};
-    const user = process.env.OPEN_SKY_USER || '';
-    const pass = process.env.OPEN_SKY_PASS || '';
-    if (user && pass) {
-      headers['Authorization'] = 'Basic ' + btoa(`${user}:${pass}`);
-    }
-
-    const resp = await fetch(url, { headers, cache: 'no-store' });
-    if (!resp.ok) {
-      return json({ error: `OpenSky ${resp.status}` }, resp.status);
-    }
-
-    const data = await resp.json();
-    return json(data, 200);
+    const r = await fetch(url, { headers: { 'cache-control': 'no-store' }});
+    if (!r.ok) return res.status(r.status).json({ error: 'OpenSky error' });
+    const data = await r.json();
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(200).json(data);
   } catch (e) {
-    return json({ error: String(e) }, 500);
+    return res.status(500).json({ error: e.message });
   }
-
-  function json(payload, status = 200) {
-    return new Response(JSON.stringify(payload), {
-      status,
-      headers: { 'content-type': 'application/json; charset=utf-8', ...CORS },
-    });
-  }
-}
+} 
