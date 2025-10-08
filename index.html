@@ -3,467 +3,279 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Ceol Gan Eagla — Marine Weather & Nav</title>
+<title>Ceol Gan Eagla — Marine</title>
 <meta name="theme-color" content="#0a0f15">
 
-<!-- Leaflet -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-<!-- SunCalc for sun/moon times -->
 <script src="https://unpkg.com/suncalc@1.9.0/suncalc.js"></script>
 
 <style>
   :root{
-    --bg:#081018; --ink:#eaf2ff; --muted:#a8bed6; --panel:#0e1924;
-    --card:#111f2c; --line:#1c2b3c; --accent:#20d27d; --accent-ink:#062816; --warn:#ef4444;
-    --gold:#ffcf63; --celtic:#16a34a;
+    --bg:#09131b; --ink:#eaf2ff; --muted:#a8bed6; --panel:#0d1620;
+    --card:#0f1c28; --line:#1b2a3a; --accent:#20d27d; --warn:#ef4444; --gold:#ffcf63;
   }
-  *{box-sizing:border-box}
-  html,body{height:100%;margin:0}
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Inter,sans-serif;background:var(--bg);color:var(--ink);overflow:hidden}
+  *{box-sizing:border-box} html,body{height:100%;margin:0}
+  body{background:var(--bg);color:var(--ink);font-family:system-ui,Segoe UI,Inter,Roboto,sans-serif;overflow:hidden}
 
-  /* Subtle animated “sea” backdrop */
-  .ocean{
-    position:fixed;inset:0;z-index:-1;
-    background: radial-gradient(1200px 800px at 70% 20%, #0c1a27 0%, #081018 60%, #050a10 100%);
-    overflow:hidden;
-  }
-  .wave{
-    position:absolute;left:-50%;right:-50%;height:240px;
-    background:radial-gradient(1000px 120px at 50% 120px, rgba(32,210,125,0.08), rgba(32,210,125,0) 60%);
-    animation: swell 12s ease-in-out infinite;
-    filter: blur(6px);
-  }
-  .wave.w2{animation-duration:16s;opacity:.6}
-  .wave.w3{animation-duration:20s;opacity:.4}
-  @keyframes swell {
-    0%,100%{transform:translateY(0)}
-    50%{transform:translateY(12px)}
-  }
+  header{position:fixed;inset:0 0 auto 0;z-index:30;display:flex;gap:.6rem;align-items:center;
+    padding:8px 12px;background:linear-gradient(180deg,rgba(9,19,27,.85),rgba(9,19,27,.35) 70%,transparent);
+    border-bottom:1px solid rgba(255,255,255,.06);backdrop-filter:blur(6px)}
+  .logo{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;
+    background:linear-gradient(135deg,#135b2a,#0e3c1c);border:1px solid rgba(255,255,255,.12)}
+  .logo:before{content:"♪";color:var(--gold);font-weight:800}
+  h1{font-size:15px;margin:0;line-height:1.1}
+  .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .brand{margin-left:auto;font-size:11px;color:var(--muted);font-weight:700}
 
-  /* Header */
-  header{
-    position:fixed;top:0;left:0;right:0;z-index:20;
-    display:flex;align-items:center;gap:.75rem;
-    padding:10px 14px;
-    background:linear-gradient(180deg, rgba(9,17,25,.85), rgba(9,17,25,.55) 70%, transparent);
-    border-bottom:1px solid rgba(255,255,255,.04);
-    backdrop-filter: blur(6px);
-  }
-  .logo{
-    width:38px;height:38px;border-radius:10px;
-    display:grid;place-items:center;
-    background:linear-gradient(135deg,#135b2a,#0e3c1c);
-    border:1px solid rgba(255,255,255,.1);
-    box-shadow: 0 0 0 2px rgba(32,210,125,.12), 0 10px 30px rgba(0,0,0,.35);
-  }
-  .logo:before{
-    content:"♪"; font-weight:700; color:var(--gold); text-shadow:0 0 8px rgba(255,207,99,.65);
-  }
-  h1{font-size:16px;margin:0;line-height:1.15}
-  .sub{color:var(--muted);font-size:12px}
+  #map{position:fixed;inset:52px 0 120px 0}
+  .leaflet-top.leaflet-left{top:62px} /* nudge zoom */
+  .leaflet-control-attribution{margin-bottom:6px}
 
-  /* Layout */
-  .wrap{
-    display:grid; grid-template-rows:auto 1fr auto;
-    height:100%; width:100%;
-  }
-  main{display:grid; grid-template-rows: 1fr auto; height:100vh; padding-top:60px; padding-bottom:118px; }
-  #map{height:100%; width:100%; border-top:1px solid var(--line)}
-  .panel{
-    background:linear-gradient(180deg, rgba(14,25,36,.92), rgba(14,25,36,.88));
-    border-top:1px solid var(--line);
-    display:grid; gap:10px; padding:10px 12px;
-  }
-  .cards{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px}
-  .card{
-    background: linear-gradient(180deg, #0f1d2a, #0c1823);
-    border:1px solid var(--line);
-    border-radius:14px; padding:10px 12px;
-    box-shadow: 0 10px 24px rgba(0,0,0,.28);
-  }
-  .card h3{margin:0 0 6px;font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.2px}
-  .kv{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap}
-  .big{font-size:22px; font-weight:800}
+  /* Bottom panel */
+  .panel{position:fixed;inset:auto 0 0 0;background:linear-gradient(180deg,#0c1721,#0a131c);
+    border-top:1px solid var(--line);padding:8px 10px 12px;z-index:25;transition:transform .2s ease}
+  .panel.hidden{transform:translateY(92%)} /* slide down when hidden */
+  .togrow{display:flex;gap:8px;justify-content:center;margin-bottom:6px}
+  .btn{appearance:none;border:none;cursor:pointer;background:#112233;color:var(--ink);
+    padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.09);font-weight:700}
+  .btn.min{padding:8px 10px;font-size:13px}
+  .btn.primary{background:linear-gradient(180deg,#1b6b43,#0e3a23)}
+  .btn.ghost{background:transparent;border-style:dashed}
+  .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .card{background:linear-gradient(180deg,#0f1d2a,#0c1823);border:1px solid var(--line);
+    border-radius:12px;padding:8px 10px}
+  .card h3{margin:0 0 6px;font-size:11px;color:var(--muted);letter-spacing:.2px}
+  .kv{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .big{font-size:20px;font-weight:800}
   .unit{font-size:12px;color:var(--muted)}
-  .good{color:var(--accent)} .bad{color:var(--warn)}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#cfe}
 
-  /* Controls Footer */
-  .controls{
-    position:fixed; bottom:10px; left:0; right:0; z-index:25;
-    display:flex; gap:10px; padding:0 12px; justify-content:center; flex-wrap:wrap;
-  }
-  .btn{
-    appearance:none; border:none; cursor:pointer;
-    font-weight:700; letter-spacing:.2px;
-    padding:12px 14px; border-radius:16px;
-    background:linear-gradient(180deg,#143246,#0e2432);
-    color:var(--ink); min-width:120px;
-    border:1px solid rgba(255,255,255,.08);
-    box-shadow: 0 10px 20px rgba(0,0,0,.35), inset 0 0 0 2px rgba(32,210,125,.08);
-    transition: transform .08s ease, box-shadow .2s ease, filter .2s ease;
-  }
-  .btn:hover{transform:translateY(-1px); filter:brightness(1.05)}
-  .btn:active{transform:translateY(0)}
-  .btn.primary{background:linear-gradient(180deg,#1d6b43,#0f3a24); box-shadow: 0 10px 22px rgba(32,210,125,.25)}
-  .btn.ghost{background:transparent; border:1px dashed rgba(255,255,255,.2)}
-  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--warn);box-shadow:0 0 8px rgba(239,68,68,.6)}
-  .dot.ok{background:var(--accent); box-shadow:0 0 8px rgba(32,210,125,.6)}
-
-  /* Leaflet tweaks */
-  .leaflet-control-zoom a{border-radius:10px}
-  .leaflet-top.leaflet-left{top:76px}
-  .leaflet-control-layers{border-radius:12px;overflow:hidden}
-
-  /* Toast */
-  .toast{
-    position:fixed; top:64px; right:12px; background:#0c1a25;
-    border:1px solid var(--line); border-radius:12px; padding:10px 12px;
-    color:var(--ink); font-size:13px; box-shadow:0 10px 30px rgba(0,0,0,.35);
-    opacity:0; transform: translateY(-6px); transition: .25s ease;
-    max-width:70vw; z-index:30;
-  }
-  .toast.show{opacity:1; transform: translateY(0)}
-  .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:12px;color:#cde}
-  .brandline{
-    margin-left:auto; color:var(--muted); font-size:12px; font-weight:700; letter-spacing:.3px
-  }
-  @media (max-width:740px){
-    .cards{grid-template-columns:1fr 1fr}
-    .btn{min-width:44%}
-  }
-  @media (max-width:520px){
-    .cards{grid-template-columns:1fr}
-    .btn{min-width:48%}
-  }
+  @media (max-width:640px){ .cards{grid-template-columns:1fr} #map{bottom:132px} }
 </style>
 </head>
 <body>
-<div class="ocean"><div class="wave w1"></div><div class="wave w2"></div><div class="wave w3"></div></div>
-
-<div class="wrap">
-  <header>
-    <div class="logo" aria-label="Ceol Gan Eagla logo"></div>
-    <div>
-      <h1>Ceol Gan Eagla — Marine</h1>
-      <div class="sub">Fearless on sea • Seamarks • Live Winds • Sun & Moon</div>
-    </div>
-    <div class="brandline">CGE</div>
-  </header>
-
-  <main>
-    <div id="map" role="application" aria-label="Marine navigation map"></div>
-
-    <section class="panel" aria-live="polite">
-      <div class="cards">
-        <div class="card">
-          <h3>Boat</h3>
-          <div class="kv">
-            <div class="big"><span id="spd">—</span> <span class="unit">kn</span></div>
-            <div class="unit">(<span id="spdkmh">—</span> km/h)</div>
-            <div class="unit">HDG <span id="hdg">—</span>°</div>
-            <div class="unit">ACC <span id="acc">—</span> m</div>
-          </div>
-        </div>
-        <div class="card">
-          <h3>Position</h3>
-          <div class="kv mono">Lat <span id="lat">—</span> • Lon <span id="lon">—</span></div>
-          <div class="kv mono">Last fix: <span id="fixage">—</span>s ago</div>
-        </div>
-        <div class="card">
-          <h3>Weather (Open-Meteo)</h3>
-          <div class="kv">
-            <div class="big"><span id="wind">—</span> <span class="unit">m/s</span></div>
-            <div class="unit">Gust <span id="gust">—</span> m/s</div>
-            <div class="unit">Dir <span id="wdir">—</span>°</div>
-          </div>
-          <div class="kv">
-            <div class="unit">Wave H <span id="wave">—</span> m</div>
-            <div class="unit">Temp <span id="temp">—</span>°C</div>
-            <div class="unit">MSLP <span id="mslp">—</span> hPa</div>
-          </div>
-        </div>
-        <div class="card">
-          <h3>Sun & Moon</h3>
-          <div class="kv">
-            <div class="unit">Sunrise <span id="sunup">—</span></div>
-            <div class="unit">Sunset <span id="sundown">—</span></div>
-            <div class="unit">Moon <span id="moon">—</span>%</div>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <div class="controls">
-    <button id="locate" class="btn primary"><span class="dot" id="gpsdot"></span>Follow Me</button>
-    <button id="dropTrail" class="btn">Trail: On</button>
-    <button id="fullscreen" class="btn">Fullscreen</button>
-    <button id="recenter" class="btn ghost">Re-center</button>
+<header>
+  <div class="logo" aria-label="Ceol Gan Eagla"></div>
+  <div>
+    <h1>Ceol Gan Eagla — Marine</h1>
+    <div class="sub">Seamarks • Live Wind • Sun & Moon</div>
   </div>
-</div>
+  <div class="brand">CGE</div>
+</header>
 
-<div class="toast" id="toast"></div>
+<div id="map" aria-label="Marine map"></div>
+
+<section class="panel" id="panel">
+  <div class="togrow">
+    <button id="follow" class="btn primary min"><span id="gpsdot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;margin-right:6px"></span>Follow</button>
+    <button id="trail" class="btn min">Trail: On</button>
+    <button id="recenter" class="btn ghost min">Re-center</button>
+    <button id="fullscreen" class="btn ghost min">Full-screen</button>
+    <button id="toggleInfo" class="btn min">Hide Info</button>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <h3>Boat</h3>
+      <div class="kv">
+        <div class="big"><span id="spd">—</span><span class="unit"> kn</span></div>
+        <div class="unit">(<span id="spdkmh">—</span> km/h)</div>
+        <div class="unit">HDG <span id="hdg">—</span>°</div>
+        <div class="unit">ACC <span id="acc">—</span> m</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Position</h3>
+      <div class="kv mono">Lat <span id="lat">—</span> • Lon <span id="lon">—</span></div>
+      <div class="kv mono">Last fix: <span id="fixage">—</span>s ago</div>
+    </div>
+    <div class="card">
+      <h3>Weather (Open-Meteo)</h3>
+      <div class="kv">
+        <div class="big"><span id="wind">—</span><span class="unit"> m/s</span></div>
+        <div class="unit">Gust <span id="gust">—</span></div>
+        <div class="unit">Dir <span id="wdir">—</span>°</div>
+      </div>
+      <div class="kv">
+        <div class="unit">Wave H <span id="wave">—</span> m</div>
+        <div class="unit">Temp <span id="temp">—</span>°C</div>
+        <div class="unit">MSLP <span id="mslp">—</span> hPa</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Sun & Moon</h3>
+      <div class="kv">
+        <div class="unit">Sunrise <span id="sunup">—</span></div>
+        <div class="unit">Sunset <span id="sundown">—</span></div>
+        <div class="unit">Moon <span id="moon">—</span>%</div>
+      </div>
+    </div>
+  </div>
+</section>
 
 <script>
-/* --- Map Setup --- */
-const map = L.map('map', { zoomControl:true, worldCopyJump:true, tap:false }).setView([53.35, -6.26], 6);
+/* Map */
+const map = L.map('map', { zoomControl:true, worldCopyJump:true, tap:false }).setView([53.35,-6.26], 12);
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+const seamarks = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',{maxZoom:18,opacity:.9,attribution:'&copy; OpenSeaMap'}).addTo(map);
+L.control.layers({OSM:osm},{Seamarks:seamarks},{collapsed:true,position:'topleft'}).addTo(map);
 
-// Base OSM
-const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19,
-  attribution: '&copy; OpenStreetMap'
-}).addTo(map);
-
-// OpenSeaMap Seamarks overlay (official tile)
-const seamarks = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
-  maxZoom: 18,
-  opacity: 0.85,
-  attribution: '&copy; OpenSeaMap contributors'
-}).addTo(map);
-
-// Layer control
-L.control.layers(
-  { "OpenStreetMap": osm },
-  { "Seamarks": seamarks },
-  { position: 'topleft', collapsed: true }
-).addTo(map);
-
-// Boat marker & trail
-const boatIcon = L.divIcon({
-  className: 'boat-icon',
-  html: `<div style="
-      width:20px;height:20px;border-radius:50%;
-      background:radial-gradient(circle at 30% 30%, #20d27d 0%, #15784b 60%, #0c3a25 100%);
-      border:2px solid rgba(255,255,255,.7);
-      box-shadow:0 0 16px rgba(32,210,125,.55);
-    "></div>`,
-  iconSize: [20,20],
-  iconAnchor: [10,10]
-});
-let boatMarker = L.marker([53.35,-6.26], {icon:boatIcon}).addTo(map);
-let trailOn = true;
-const trail = L.polyline([], {color:'#22c55e', weight:3, opacity:0.8}).addTo(map);
-
-// Heading cone
-const cone = L.polygon([], {color:'#22c55e', weight:1, opacity:0.6, fillOpacity:0.08});
-cone.addTo(map);
-
-// Fullscreen (native API)
-const fullscreenBtn = document.getElementById('fullscreen');
-fullscreenBtn.addEventListener('click', () => {
+/* UI */
+const $ = s => document.querySelector(s);
+const panel = $('#panel');
+$('#toggleInfo').onclick = () => {
+  panel.classList.toggle('hidden');
+  $('#toggleInfo').textContent = panel.classList.contains('hidden') ? 'Show Info' : 'Hide Info';
+};
+$('#fullscreen').onclick = () => {
   const el = document.documentElement;
-  if (!document.fullscreenElement) { el.requestFullscreen?.(); }
-  else { document.exitFullscreen?.(); }
-});
+  if (!document.fullscreenElement) el.requestFullscreen?.(); else document.exitFullscreen?.();
+};
 
-/* --- UI helpers --- */
-const $ = sel => document.querySelector(sel);
-const toastEl = $('#toast');
-let toastTimer;
-function toast(msg, good=false){
-  toastEl.textContent = msg;
-  toastEl.classList.add('show');
-  toastEl.style.borderColor = good ? 'rgba(32,210,125,.45)' : 'rgba(239,68,68,.45)';
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2500);
-}
+/* Boat marker, trail, heading cone */
+const boatIcon = L.divIcon({className:'boat',html:`<div style="width:18px;height:18px;border-radius:50%;
+  background:radial-gradient(circle at 30% 30%, #20d27d 0%, #15784b 60%, #0c3a25 100%);
+  border:2px solid rgba(255,255,255,.7);box-shadow:0 0 10px rgba(32,210,125,.55)"></div>` ,iconSize:[18,18],iconAnchor:[9,9]});
+let boat = L.marker([53.35,-6.26],{icon:boatIcon}).addTo(map);
+let trailOn = true; const trail = L.polyline([], {color:'#22c55e',weight:3,opacity:.85}).addTo(map);
+const cone = L.polygon([], {color:'#22c55e',weight:1,opacity:.6,fillOpacity:.08}).addTo(map);
+$('#trail').onclick = () => { trailOn = !trailOn; $('#trail').textContent = `Trail: ${trailOn?'On':'Off'}`; if(!trailOn) trail.setLatLngs([]); };
 
-/* --- Geolocation & dynamics --- */
-const gpsBtn = $('#locate');
-const recenterBtn = $('#recenter');
-const gpsdot = $('#gpsdot');
-let follow = false;
-let lastFix = null;
-let watchId = null;
-
-gpsBtn.addEventListener('click', () => {
+/* Buttons */
+const followBtn = $('#follow'), gpsdot = $('#gpsdot'), recenterBtn = $('#recenter');
+let follow=false, watchId=null, lastFix=null;
+followBtn.onclick = () => {
   follow = !follow;
-  gpsBtn.classList.toggle('primary', follow);
-  gpsdot.classList.toggle('ok', follow);
-  gpsBtn.innerHTML = `<span class="dot ${follow?'ok':''}" id="gpsdot"></span>${follow?'Following':'Follow Me'}`;
-  if (follow && !watchId) startWatch();
-  if (!follow && watchId){ navigator.geolocation.clearWatch(watchId); watchId = null; }
-});
+  followBtn.classList.toggle('primary', follow);
+  gpsdot.style.background = follow ? '#20d27d' : '#ef4444';
+  follow ? startWatch() : (navigator.geolocation.clearWatch?.(watchId), watchId=null);
+};
+recenterBtn.onclick = () => { if(lastFix) map.setView([lastFix.coords.latitude,lastFix.coords.longitude], Math.max(14,map.getZoom())) };
 
-recenterBtn.addEventListener('click', () => {
-  if (lastFix){ map.setView([lastFix.coords.latitude, lastFix.coords.longitude], Math.max(map.getZoom(), 13)); }
-});
-
+/* Geo */
 function startWatch(){
-  if (!('geolocation' in navigator)){
-    toast('Geolocation not supported', false); return;
-  }
-  watchId = navigator.geolocation.watchPosition(onPos, onErr, {
-    enableHighAccuracy: true, maximumAge: 1000, timeout: 10000
-  });
-  toast('GPS: requesting high accuracy…');
+  if(!('geolocation' in navigator)) return;
+  if(watchId) return;
+  watchId = navigator.geolocation.watchPosition(onPos, err => {gpsdot.style.background='#ef4444'}, {enableHighAccuracy:true,maximumAge:1000,timeout:10000});
 }
 
-function onErr(e){
-  toast('GPS error: ' + e.message, false);
-  gpsdot.classList.remove('ok');
-}
-
-const spdEl = $('#spd'), spdkmhEl = $('#spdkmh'), hdgEl = $('#hdg'), accEl = $('#acc');
-const latEl = $('#lat'), lonEl = $('#lon'), fixEl = $('#fixage');
+const spd=$('#spd'), spdkmh=$('#spdkmh'), hdg=$('#hdg'), acc=$('#acc'), latEl=$('#lat'), lonEl=$('#lon'), fixage=$('#fixage');
 
 function onPos(pos){
   lastFix = pos;
-  const {latitude:lat, longitude:lon, accuracy:acc, heading, speed} = pos.coords;
-  const now = Date.now();
-
+  const {latitude:lat, longitude:lon, accuracy, heading, speed} = pos.coords;
+  const now=Date.now();
   latEl.textContent = lat.toFixed(5);
   lonEl.textContent = lon.toFixed(5);
-  accEl.textContent = acc ? acc.toFixed(0) : '—';
-  fixEl.textContent = ((now - pos.timestamp)/1000).toFixed(0);
+  acc.textContent = (accuracy??0).toFixed(0);
+  fixage.textContent = ((now - pos.timestamp)/1000|0);
 
-  // Speed: m/s -> knots & km/h
-  let ms = (typeof speed === 'number' && speed >= 0) ? speed : NaN;
-  // if speed not provided, compute from last point
-  if (!Number.isFinite(ms) && trail.getLatLngs().length){
-    const last = trail.getLatLngs()[trail.getLatLngs().length-1];
-    const dt = (now - (onPos._lastTime||now))/1000;
-    if (dt > 0.2 && onPos._lastPoint){
-      const d = map.distance([lat,lon], onPos._lastPoint); // meters
+  // speed m/s -> knots / kmh; fallback estimate
+  let ms = (typeof speed==='number' && speed>=0) ? speed : NaN;
+  if(!Number.isFinite(ms) && onPos._last){
+    const dt = (now - onPos._last.t)/1000;
+    if(dt>0.2){
+      const d = map.distance([lat,lon], onPos._last.ll);
       ms = d/dt;
     }
   }
-  onPos._lastTime = now;
-  onPos._lastPoint = [lat,lon];
+  onPos._last = {t:now,ll:[lat,lon]};
 
-  const kn = Number.isFinite(ms) ? (ms * 1.94384) : NaN;
-  const kmh = Number.isFinite(ms) ? (ms * 3.6) : NaN;
-  spdEl.textContent = Number.isFinite(kn) ? kn.toFixed(1) : '—';
-  spdkmhEl.textContent = Number.isFinite(kmh) ? kmh.toFixed(1) : '—';
+  const kn = Number.isFinite(ms) ? ms*1.94384 : NaN;
+  const kmh = Number.isFinite(ms) ? ms*3.6 : NaN;
+  spd.textContent = Number.isFinite(kn)?kn.toFixed(1):'—';
+  spdkmh.textContent = Number.isFinite(kmh)?kmh.toFixed(1):'—';
 
-  const hd = (typeof heading === 'number' && heading >= 0) ? heading : estimateHeading();
-  hdgEl.textContent = Number.isFinite(hd) ? Math.round(hd) : '—';
+  const hd = (typeof heading==='number' && heading>=0)?heading:estimateHeading();
+  hdg.textContent = Number.isFinite(hd)?Math.round(hd):'—';
 
-  // Update marker and cone
-  boatMarker.setLatLng([lat,lon]);
-  drawCone([lat,lon], Number.isFinite(hd) ? hd : null);
+  boat.setLatLng([lat,lon]);
+  drawCone([lat,lon], Number.isFinite(hd)?hd:null);
 
-  if (follow) {
-    const targetZoom = Math.max(map.getZoom(), 14);
-    map.setView([lat, lon], targetZoom, {animate:true});
+  if(follow) map.setView([lat,lon], Math.max(14,map.getZoom()), {animate:true});
+
+  if(trailOn){
+    const pts = trail.getLatLngs(); const last = pts[pts.length-1];
+    if(!last || map.distance(last,[lat,lon])>2){ pts.push([lat,lon]); trail.setLatLngs(pts); }
   }
 
-  if (trailOn){
-    const pts = trail.getLatLngs();
-    const lastPt = pts[pts.length-1];
-    if (!lastPt || (map.distance(lastPt, [lat,lon]) > 2)) {
-      pts.push([lat,lon]);
-      trail.setLatLngs(pts);
-    }
-  }
-
-  // Weather and sun/moon updates
-  refreshWeather(lat, lon);
-  refreshSunMoon(lat, lon);
+  refreshWeather(lat,lon);
+  refreshSunMoon(lat,lon);
 }
 
 function estimateHeading(){
-  const pts = trail.getLatLngs();
-  if (pts.length < 2) return NaN;
-  const a = pts[pts.length-2], b = pts[pts.length-1];
-  const y = Math.sin((b.lng - a.lng) * Math.PI/180) * Math.cos(b.lat * Math.PI/180);
-  const x = Math.cos(a.lat * Math.PI/180)*Math.sin(b.lat * Math.PI/180) -
-            Math.sin(a.lat * Math.PI/180)*Math.cos(b.lat * Math.PI/180)*Math.cos((b.lng-a.lng)*Math.PI/180);
-  let brng = Math.atan2(y,x) * 180/Math.PI;
-  return (brng + 360) % 360;
+  const pts = trail.getLatLngs(); if(pts.length<2) return NaN;
+  const a=pts[pts.length-2], b=pts[pts.length-1];
+  const y=Math.sin((b.lng-a.lng)*Math.PI/180)*Math.cos(b.lat*Math.PI/180);
+  const x=Math.cos(a.lat*Math.PI/180)*Math.sin(b.lat*Math.PI/180)-Math.sin(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.cos((b.lng-a.lng)*Math.PI/180);
+  return (Math.atan2(y,x)*180/Math.PI+360)%360;
 }
-
-function drawCone(center, bearing){
-  if (!Number.isFinite(bearing)){ cone.setLatLngs([]); return; }
-  const rangeM = 120; // short visual cone
-  const spread = 30; // degrees
-  const pts = [center];
-  for (let d of [-spread, spread]){
-    pts.push(destPoint(center[0], center[1], bearing + d, rangeM));
-  }
-  cone.setLatLngs(pts);
+function drawCone([lat,lon], bearing){
+  if(!Number.isFinite(bearing)){cone.setLatLngs([]);return;}
+  const range=120, spread=30;
+  const p1 = dest(lat,lon,bearing-spread,range);
+  const p2 = dest(lat,lon,bearing+spread,range);
+  cone.setLatLngs([[lat,lon], p1, p2]);
 }
-function destPoint(lat, lon, brngDeg, distM){
-  const R=6371000; const brng=brngDeg*Math.PI/180;
-  const φ1=lat*Math.PI/180, λ1=lon*Math.PI/180, δ=distM/R;
-  const φ2 = Math.asin(Math.sin(φ1)*Math.cos(δ) + Math.cos(φ1)*Math.sin(δ)*Math.cos(brng));
-  const λ2 = λ1 + Math.atan2(Math.sin(brng)*Math.sin(δ)*Math.cos(φ1), Math.cos(δ)-Math.sin(φ1)*Math.sin(φ2));
+function dest(lat,lon,brng,dist){
+  const R=6371000, br=brng*Math.PI/180, φ1=lat*Math.PI/180, λ1=lon*Math.PI/180, δ=dist/R;
+  const φ2=Math.asin(Math.sin(φ1)*Math.cos(δ)+Math.cos(φ1)*Math.sin(δ)*Math.cos(br));
+  const λ2=λ1+Math.atan2(Math.sin(br)*Math.sin(δ)*Math.cos(φ1),Math.cos(δ)-Math.sin(φ1)*Math.sin(φ2));
   return [φ2*180/Math.PI, ((λ2*180/Math.PI)+540)%360-180];
 }
 
-/* --- Trail toggle --- */
-const trailBtn = document.getElementById('dropTrail');
-trailBtn.addEventListener('click', ()=>{
-  trailOn = !trailOn;
-  trailBtn.textContent = `Trail: ${trailOn?'On':'Off'}`;
-  if (!trailOn) trail.setLatLngs([]);
-});
-
-/* --- Weather via Open-Meteo (no key) --- */
-let weatherTimer = 0, lastWXPos = null;
-async function refreshWeather(lat, lon){
-  // throttle to every 90s or >2km move
-  const now = Date.now();
-  if ((now - weatherTimer) < 90000 && lastWXPos){
-    const d = map.distance([lat,lon], lastWXPos);
-    if (d < 2000) return;
-  }
-  weatherTimer = now; lastWXPos = [lat,lon];
+/* Weather (Open-Meteo hourly, nearest hour) */
+let lastWX={t:0, ll:null};
+async function refreshWeather(lat,lon){
+  const now=Date.now();
+  if(now-lastWX.t<90000 && lastWX.ll && map.distance(lastWX.ll,[lat,lon])<2000) return;
+  lastWX={t:now,ll:[lat,lon]};
 
   try{
-    // Marine variables: wind, gust, direction, wave height (from ECMWF where available), temp, pressure
-    const url = new URL('https://api.open-meteo.com/v1/forecast');
+    const url=new URL('https://api.open-meteo.com/v1/forecast');
     url.searchParams.set('latitude', lat);
     url.searchParams.set('longitude', lon);
-    url.searchParams.set('current', 'temperature_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m,surface_pressure,wave_height');
-    url.searchParams.set('timezone', 'auto');
+    url.searchParams.set('hourly','wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,surface_pressure,wave_height');
+    url.searchParams.set('timezone','auto');
+    url.searchParams.set('forecast_days','1');
+    const r=await fetch(url, {cache:'no-store'}); const j=await r.json();
+    const H=j.hourly; if(!H){return;}
 
-    const r = await fetch(url.toString(), {cache:'no-store'});
-    const j = await r.json();
-
-    const cur = j.current || {};
-    setText('#wind', num(cur.wind_speed_10m));
-    setText('#gust', num(cur.wind_gusts_10m));
-    setText('#wdir', num(cur.wind_direction_10m));
-    setText('#wave', num(cur.wave_height));
-    setText('#temp', num(cur.temperature_2m));
-    setText('#mslp', num(cur.surface_pressure));
-
-    toast('Weather updated', true);
-  }catch(err){
-    toast('Weather fetch failed', false);
-  }
+    // pick nearest hour index
+    const idx = nearestHourIndex(H.time);
+    set('#wind', H.wind_speed_10m?.[idx]);
+    set('#gust', H.wind_gusts_10m?.[idx]);
+    set('#wdir', H.wind_direction_10m?.[idx]);
+    set('#temp', H.temperature_2m?.[idx]);
+    set('#mslp', H.surface_pressure?.[idx]);
+    set('#wave', H.wave_height?.[idx]); // may be undefined in some locations
+  }catch(e){/* silent fallback */}
 }
-function num(v){ return (v===null||v===undefined||Number.isNaN(+v)) ? '—' : (+v).toFixed(1); }
-function setText(sel, val){ const el=document.querySelector(sel); if (el) el.textContent = val; }
-
-/* --- Sun/Moon times --- */
-let lastSunKey = '';
-function refreshSunMoon(lat, lon){
-  const key = `${lat.toFixed(2)},${lon.toFixed(2)}:${new Date().toDateString()}`;
-  if (key === lastSunKey) return;
-  lastSunKey = key;
-
+function nearestHourIndex(times){
   const now = new Date();
-  const times = SunCalc.getTimes(now, lat, lon);
-  const moon = SunCalc.getMoonIllumination(now);
-  document.getElementById('sunup').textContent = hm(times.sunrise);
-  document.getElementById('sundown').textContent = hm(times.sunset);
-  document.getElementById('moon').textContent = Math.round(moon.fraction*100);
+  let best=0, bestd=1e15;
+  for(let i=0;i<times.length;i++){
+    const d=Math.abs(new Date(times[i]).getTime()-now.getTime());
+    if(d<bestd){bestd=d;best=i;}
+  }
+  return best;
+}
+function set(sel,val){ const el=$(sel); el.textContent=(val==null||isNaN(+val))?'—':(+val).toFixed(1); }
+
+/* Sun & Moon */
+let sunKey='';
+function refreshSunMoon(lat,lon){
+  const k = `${lat.toFixed(2)},${lon.toFixed(2)}:${new Date().toDateString()}`;
+  if(k===sunKey) return; sunKey=k;
+  const now=new Date(), t=SunCalc.getTimes(now,lat,lon), m=SunCalc.getMoonIllumination(now);
+  $('#sunup').textContent = hm(t.sunrise); $('#sundown').textContent = hm(t.sunset); $('#moon').textContent = Math.round(m.fraction*100);
 }
 function hm(d){ if(!d) return '—'; return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 
-/* --- Kickoff: nice Dublin/Irish coast view --- */
-map.setView([53.324, -6.0], 9);
-toast('Tap “Follow Me” to start GPS', true);
-
-/* Optional: 1-tap start if permissions already granted (some Androids) */
-if (navigator.permissions && navigator.permissions.query){
-  navigator.permissions.query({name:'geolocation'}).then(p=>{
-    if (p.state === 'granted'){ follow = true; gpsBtn.click(); }
-  }).catch(()=>{});
+/* Auto-start if already granted */
+if(navigator.permissions && navigator.permissions.query){
+  navigator.permissions.query({name:'geolocation'}).then(p=>{ if(p.state==='granted'){ follow=true; followBtn.click(); } }).catch(()=>{});
 }
 </script>
 </body>
